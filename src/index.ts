@@ -1,22 +1,17 @@
 import "dotenv/config";
-import express, { Request, Response, NextFunction } from "express";
-import {StatusCodes} from "http-status-codes";
-import { StatusError } from "./errors/StatusError";
+import express from "express";
+
+import swapRoutes from "./routes/swapRoutes";
+import errorRoutes from "./routes/errorRoutes";
 
 const app = express();
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
 
-app.get("/", (req: Request, res: Response, next: NextFunction) => {
-  res.send("Hello World!");
-});
+// Routes
+swapRoutes(app);
+errorRoutes(app);
 
-
-app.use((req: Request, res: Response, next: NextFunction) => {
-  const error: StatusError = new StatusError("Endpoint does not exist", StatusCodes.NOT_FOUND);
-  next(error);
-});
-
-app.use((error: StatusError, req: Request, res: Response, next: NextFunction) => {
-  res.status(error.statusCode).json({ message: error.message, errorCode: error.statusCode,errorStack: error.stack });
-});
-
-app.listen(process.env.PORT, () => console.log(`Server has started and listening on port ${process.env.PORT}!`));
+app.listen(process.env.PORT, () =>
+  console.log(`Server has started and listening on port ${process.env.PORT}!`)
+);
