@@ -14,7 +14,7 @@ export const swap = (req: Request, res: Response, next: NextFunction) => {
     new Date().getTime(),
     "America/Buenos_Aires"
   ).toISOString();
-	console.log("timestamp:", timestamp);
+  console.log("timestamp:", timestamp);
   const endpoint =
     "https://www.okx.com/api/v5/public/instruments?instType=SPOT";
 
@@ -40,7 +40,7 @@ export const swap = (req: Request, res: Response, next: NextFunction) => {
     })
     .catch((error) => {
       res.json({
-		data: error.response.data,
+        data: error.response.data,
         error: error,
       });
     });
