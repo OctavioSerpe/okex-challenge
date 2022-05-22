@@ -1,5 +1,4 @@
 import { Express } from "express";
-import { swap } from "../controllers/swapController";
 import { notFound, handler } from "../controllers/errorController";
 
 export default function (app: Express) {
