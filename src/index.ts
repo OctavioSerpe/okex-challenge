@@ -6,6 +6,8 @@ import errorRoutes from "./routes/errorRoutes";
 
 import { loadInitialTables } from "./db/initialDb";
 
+// TODO: check if keys are loaded on .env file
+
 loadInitialTables();
 
 const app = express();
