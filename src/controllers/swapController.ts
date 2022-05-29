@@ -63,7 +63,10 @@ export const swap = async (req: Request, res: Response, next: NextFunction) => {
       SPREAD = ${optimalSpotPairData.spread},
       LAST_TRADED_PRICE = ${optimalSpotPairData.lastTradedPrice},
       SPREAD_ASK = ${optimalSpotPairData.spreadAsk},
-      SPREAD_BID = ${optimalSpotPairData.spreadBid}
+      TOTAL_SPREAD_ASK = ${optimalSpotPairData.spreadAsk},
+      SPREAD_BID = ${optimalSpotPairData.spreadBid},
+      TOTAL_SPREAD_BID = ${optimalSpotPairData.spreadBid},
+      VOLUME = 1
     WHERE INSTRUMENT_ID = 'USDC-USDT'`);
 
     multiplier = 1 / optimalSpotPairData.lastTradedPrice;
@@ -80,7 +83,10 @@ export const swap = async (req: Request, res: Response, next: NextFunction) => {
           SPREAD = ${optimalSpotPairData.spread},
           LAST_TRADED_PRICE = ${optimalSpotPairData.lastTradedPrice / multiplier},
           SPREAD_ASK = ${optimalSpotPairData.spreadAsk / multiplier},
-          SPREAD_BID = ${optimalSpotPairData.spreadBid / multiplier}
+          TOTAL_SPREAD_ASK = ${optimalSpotPairData.spreadAsk / multiplier},
+          SPREAD_BID = ${optimalSpotPairData.spreadBid / multiplier},
+          TOTAL_SPREAD_BID = ${optimalSpotPairData.spreadBid / multiplier},
+          VOLUME = 1
         WHERE INSTRUMENT_ID = '${pair}'`);
 
         pair = "AAVE-USDC";
@@ -97,7 +103,10 @@ export const swap = async (req: Request, res: Response, next: NextFunction) => {
           SPREAD = ${optimalSpotPairData.spread},
           LAST_TRADED_PRICE = ${optimalSpotPairData.lastTradedPrice},
           SPREAD_ASK = ${optimalSpotPairData.spreadAsk},
+          TOTAL_SPREAD_ASK = ${optimalSpotPairData.spreadAsk * volume},
           SPREAD_BID = ${optimalSpotPairData.spreadBid},
+          TOTAL_SPREAD_BID = ${optimalSpotPairData.spreadBid * volume},
+          VOLUME = ${volume},
           EXPIRE_DATE = '${expireISODate}'
         WHERE INSTRUMENT_ID = '${pair}'`);
 
@@ -123,4 +132,12 @@ export const swap = async (req: Request, res: Response, next: NextFunction) => {
         error: error,
       });
     });
+};
+
+export const executeSwap = async (req: Request, res: Response, next: NextFunction) => {
+  const pair = req.query.pair as string;
+
+
+
+
 };
