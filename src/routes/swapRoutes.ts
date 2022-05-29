@@ -1,7 +1,8 @@
 import { Express } from "express";
-import { swap } from "../controllers/swapController";
-import { getSwapMiddleware } from "../middlewares/swapMiddleware";
+import { executeSwap, getSwap } from "../controllers/swapController";
+import { executeSwapMiddleware, getSwapMiddleware } from "../middlewares/swapMiddleware";
 
 export default function(app: Express){
-    app.get("/swap", getSwapMiddleware, swap);
+    app.get("/swap", getSwapMiddleware, getSwap);
+    app.post("/swap", executeSwapMiddleware, executeSwap);
 };

@@ -19,6 +19,6 @@ export const handler = (
   res.status(error.statusCode).json({
     message: error.message,
     error_code: error.statusCode,
-    error_stack: error.stack,
+    // error_stack: error.stack,
   });
 };

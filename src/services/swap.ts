@@ -1,3 +1,4 @@
+import { query } from "../db/initialDb";
 import { executeRequest, getConfig, config } from "./okex";
 
 // export type optimalSideData ={
@@ -66,7 +67,7 @@ export const getOptimalSwapForPair = async (
   pair: string,
   parametricSpread?: number,
   multiplier?: number
-) => {
+): Promise<optimalSpotData> => {
   const response = await executeRequest(
     `/api/v5/market/tickers?instType=SPOT`,
     "GET"
@@ -93,4 +94,22 @@ export const getOptimalSwapForPair = async (
   return optimalSpotPairData;
 
   // return getOptimalSwap(response.data[0].bids, response.data[0].asks, ORDER_BOOK_DEPTH, spread);
+};
+
+export type swap = {
+  totalSpreadBid: number;
+  totalSpreadAsk: number;
+  expireDate: string;
+};
+
+export const getSwapData = async (pair: string): Promise<swap> => {
+  const DBswapData = await query(`SELECT * FROM spot_instruments WHERE instrument_id = '${pair}'`);
+
+  const swapData = {
+    totalSpreadBid: DBswapData[0].total_spread_bid,
+    totalSpreadAsk: DBswapData[0].total_spread_ask,
+    expireDate: new Date(DBswapData[0].expire_date).toISOString(),
+  };
+
+  return swapData;
 };

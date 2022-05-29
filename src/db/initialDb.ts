@@ -38,6 +38,7 @@ export const query = async (query: string) => {
 
   try {
     await client.connect();
+    
     const response = await client.query(query);
 
     await client.end();

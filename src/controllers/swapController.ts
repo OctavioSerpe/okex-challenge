@@ -1,15 +1,18 @@
+import { format, isAfter, isBefore, parseISO } from "date-fns";
 import { zonedTimeToUtc } from "date-fns-tz";
 import { Request, Response, NextFunction } from "express";
+import { StatusCodes } from "http-status-codes";
 import { query } from "../db/initialDb";
+import { StatusError } from "../errors/StatusError";
 
-import { getOptimalSwapForPair } from "../services/swap";
+import { getOptimalSwapForPair, getSwapData, swap } from "../services/swap";
 
 export type sideResult = {
   price: number;
   openOrders: number;
 };
 
-export const swap = async (req: Request, res: Response, next: NextFunction) => {
+export const getSwap = async (req: Request, res: Response, next: NextFunction) => {
   const volume = parseFloat(req.query.volume as string);
   let pair = req.query.pair as string;
   const spread = parseFloat(req.query.spread as string);
@@ -136,8 +139,26 @@ export const swap = async (req: Request, res: Response, next: NextFunction) => {
 
 export const executeSwap = async (req: Request, res: Response, next: NextFunction) => {
   const pair = req.query.pair as string;
+  
+  const swapData: swap = await getSwapData(pair);
 
+  if(Object.values(swapData).some(value => value === null)) {
+    next(new StatusError("Swap data not loaded, please request a swap first at /swap", StatusCodes.CONFLICT));
+  }
 
+  const currentISODate = zonedTimeToUtc(
+    new Date().getTime(),
+    "America/Buenos_Aires"
+  ).toISOString();
+  
+  const expireISODate = swapData.expireDate;
 
+  if(isAfter(new Date(currentISODate), new Date(expireISODate))) {
+    next(new StatusError("Swap expired, please request a new swap at /swap", StatusCodes.CONFLICT));
+    return;
+  }
+  
+  // TODO: execute swap on OKEX API & if succeeded truncate entry from DB
 
+  res.json({"swapData": swapData, currentISODate, expireISODate});
 };
