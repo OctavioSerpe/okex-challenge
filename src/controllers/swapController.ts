@@ -4,6 +4,7 @@ import { Request, Response, NextFunction } from "express";
 import { StatusCodes } from "http-status-codes";
 import { query } from "../db/initialDb";
 import { StatusError } from "../errors/StatusError";
+import { executeRequest } from "../services/okex";
 
 import { getOptimalSwapForPair, getSwapData, swap } from "../services/swap";
 
@@ -12,7 +13,11 @@ export type sideResult = {
   openOrders: number;
 };
 
-export const getSwap = async (req: Request, res: Response, next: NextFunction) => {
+export const getSwap = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+) => {
   const volume = parseFloat(req.query.volume as string);
   let pair = req.query.pair as string;
   const spread = parseFloat(req.query.spread as string);
@@ -78,14 +83,19 @@ export const getSwap = async (req: Request, res: Response, next: NextFunction) =
     // set pair recognized by OKX API
     pair = "AAVE-USDT";
   }
-  getOptimalSwapForPair(pair, spread, multiplier)
-    .then(async (optimalSpotPairData) => {
-      // log data into db, not really necessary
-      if (pair == "AAVE-USDT") {
-        await query(`UPDATE spot_instruments 
+  const optimalSpotPairData = await getOptimalSwapForPair(
+    pair,
+    spread,
+    multiplier
+  );
+  // log data into db, not really necessary
+  if (pair == "AAVE-USDT") {
+    await query(`UPDATE spot_instruments 
         SET 
           SPREAD = ${optimalSpotPairData.spread},
-          LAST_TRADED_PRICE = ${optimalSpotPairData.lastTradedPrice / multiplier},
+          LAST_TRADED_PRICE = ${
+            optimalSpotPairData.lastTradedPrice / multiplier
+          },
           SPREAD_ASK = ${optimalSpotPairData.spreadAsk / multiplier},
           TOTAL_SPREAD_ASK = ${optimalSpotPairData.spreadAsk / multiplier},
           SPREAD_BID = ${optimalSpotPairData.spreadBid / multiplier},
@@ -93,19 +103,19 @@ export const getSwap = async (req: Request, res: Response, next: NextFunction) =
           VOLUME = 1
         WHERE INSTRUMENT_ID = '${pair}'`);
 
-        pair = "AAVE-USDC";
-      }
+    pair = "AAVE-USDC";
+  }
 
-      // to add more time because of the processing we add 100ms more
-      const expireISODate = zonedTimeToUtc(
-        new Date().getTime() + 60 * 1100,
-        "America/Buenos_Aires"
-      ).toISOString();
+  // to add more time because of the processing we add 100ms more
+  const expireISODate = zonedTimeToUtc(
+    new Date().getTime() + 60 * 1100,
+    "America/Buenos_Aires"
+  ).toISOString();
 
-      const totalBid = optimalSpotPairData.spreadBid * volume;
-      const totalAsk = optimalSpotPairData.spreadAsk * volume;
+  const totalBid = optimalSpotPairData.spreadBid * volume;
+  const totalAsk = optimalSpotPairData.spreadAsk * volume;
 
-      await query(`UPDATE spot_instruments 
+  await query(`UPDATE spot_instruments 
         SET 
           SPREAD = ${optimalSpotPairData.spread},
           LAST_TRADED_PRICE = ${optimalSpotPairData.lastTradedPrice},
@@ -114,61 +124,130 @@ export const getSwap = async (req: Request, res: Response, next: NextFunction) =
           SPREAD_BID = ${optimalSpotPairData.spreadBid},
           TOTAL_SPREAD_BID = ${totalBid},
           FEE = ${fee},
-          FEE_BID = ${totalBid * fee},
-          FEE_ASK = ${totalAsk * fee},
           VOLUME = ${volume},
+          FEE_VOLUME = ${volume * fee},
           EXPIRE_DATE = '${expireISODate}'
         WHERE INSTRUMENT_ID = '${pair}'`);
 
-      const jsonResponse = {
-        pair,
-        lastTradedPrice: optimalSpotPairData.lastTradedPrice,
-        fee,
-        buy: {
-          unitPrice: optimalSpotPairData.spreadBid,
-          totalPrice: optimalSpotPairData.spreadBid * volume, // limit
-          feePrice: totalBid * fee,
-        },
-        sell: {
-          unitPrice: optimalSpotPairData.spreadAsk,
-          totalPrice: optimalSpotPairData.spreadAsk * volume, // limit
-          feePrice: totalAsk * fee,
-        },
-        expireISODate,
-      };
+  const jsonResponse = {
+    pair,
+    lastTradedPrice: optimalSpotPairData.lastTradedPrice,
+    fee,
+    buy: {
+      unitPrice: optimalSpotPairData.spreadBid,
+      totalPrice: totalBid, // limit
+      feeVolume: volume * fee,
+    },
+    sell: {
+      unitPrice: optimalSpotPairData.spreadAsk,
+      totalPrice: totalAsk, // limit
+      feePrice: totalAsk * fee,
+    },
+    expireISODate,
+  };
 
-      res.json(jsonResponse);
-    })
-    .catch((error) => {
-      res.json({
-        // data: error.response.data,
-        error: error,
-      });
-    });
+  res.json(jsonResponse);
 };
 
-export const executeSwap = async (req: Request, res: Response, next: NextFunction) => {
+export const executeSwap = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+) => {
   const pair = req.query.pair as string;
-  
-  const swapData: swap = await getSwapData(pair);
+  const side = req.query.side as string;
 
-  if(Object.values(swapData).some(value => value === null)) {
-    next(new StatusError("Swap data not loaded, please request a swap first at /swap", StatusCodes.CONFLICT));
+  const swapData = await getSwapData(pair);
+
+  if (Object.values(swapData).some((value) => value === null)) {
+    next(
+      new StatusError(
+        "Swap data not loaded, please request a swap first at /swap",
+        StatusCodes.CONFLICT
+      )
+    );
   }
 
   const currentISODate = zonedTimeToUtc(
     new Date().getTime(),
     "America/Buenos_Aires"
   ).toISOString();
-  
+
   const expireISODate = swapData.expireDate;
 
-  if(isAfter(new Date(currentISODate), new Date(expireISODate))) {
-    next(new StatusError("Swap expired, please request a new swap at /swap", StatusCodes.CONFLICT));
+  if (isAfter(new Date(currentISODate), new Date(expireISODate))) {
+    next(
+      new StatusError(
+        "Swap expired, please request a new swap at /swap",
+        StatusCodes.CONFLICT
+      )
+    );
     return;
   }
-  
-  // TODO: execute swap on OKEX API & if succeeded truncate entry from DB
 
-  res.json({"swapData": swapData, currentISODate, expireISODate});
+  const orderPrice =
+    side === "BUY" ? swapData.totalSpreadBid : swapData.totalSpreadAsk;
+  const orderVolume = side === "BUY" ? swapData.bidFeeVolume : swapData.volume;
+
+  // TODO: execute swap on OKEX API & if succeeded truncate entry from DB
+  const response = await executeRequest(`/api/v5/trade/order`, "POST", {
+    instId: pair,
+    tdMode: "cash",
+    side: side,
+    ordType: "limit",
+    sz: orderVolume,
+    px: orderPrice,
+  });
+
+  console.log(response);
+
+  if (response.code === "1") {
+    next(
+      new StatusError(
+        `Swap failed, please try again & check your account portfolio on OKEX. OKEX message: ${response.msg}`,
+        StatusCodes.INTERNAL_SERVER_ERROR
+      )
+    );
+    return;
+  }
+
+  if (response.code === "0") {
+    const orderID = response.data.ordId;
+
+    const orderDetails = await executeRequest(
+      `/api/v5/trade/order?ordId=${orderID}&instId=${pair}`,
+      "GET"
+    );
+
+    if (response.code === "1") {
+      next(
+        new StatusError(
+          `Retrieval of order details failed, please check your account portfolio & order status with ID ${orderID} on OKEX. OKEX message: ${response.msg}`,
+          StatusCodes.INTERNAL_SERVER_ERROR
+        )
+      );
+      return;
+    }
+
+    const executedPrice = orderDetails.data.fillPx;
+    const executedVolume = orderDetails.data.fillSz;
+    const orderStatus = orderDetails.data.state;
+
+    // do something with the fee
+    await query(`INSERT INTO logs 
+    (pair, side, order_id, order_price, filled_price, volume, filled_volume, spread, fee, fee_volume, fee_price, order_status) 
+    VALUES(
+      '${pair}', '${side}', '${
+      response.orderId
+    }', '${orderPrice}', '${executedPrice}', '${orderVolume}', '${executedVolume}','${
+      swapData.spread
+    }', '${swapData.fee}', '${swapData.bidFeeVolume}', '${
+      orderPrice * swapData.fee
+    }', '${orderStatus}'
+    )`);
+
+    res.json({ swapData: swapData, currentISODate, expireISODate, response });
+
+  }
+
 };

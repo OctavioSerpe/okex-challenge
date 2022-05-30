@@ -99,6 +99,10 @@ export const getOptimalSwapForPair = async (
 export type swap = {
   totalSpreadBid: number;
   totalSpreadAsk: number;
+  bidFeeVolume: number;
+  volume: number;
+  fee: number;
+  spread: number;
   expireDate: string;
 };
 
@@ -110,6 +114,10 @@ export const getSwapData = async (pair: string): Promise<swap> => {
   const swapData = {
     totalSpreadBid: DBswapData[0].total_spread_bid,
     totalSpreadAsk: DBswapData[0].total_spread_ask,
+    bidFeeVolume: DBswapData[0].fee_volume,
+    volume: DBswapData[0].volume,
+    fee: DBswapData[0].fee,
+    spread: DBswapData[0].spread,
     expireDate: new Date(DBswapData[0].expire_date).toISOString(),
   };
 

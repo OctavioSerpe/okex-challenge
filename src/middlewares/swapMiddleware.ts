@@ -85,10 +85,26 @@ export const executeSwapMiddleware = (
   }
   req.query.pair = (req.query.pair as string).toUpperCase();
 
+  if(!req.query.side) {
+    next(new StatusError("Missing side parameter", StatusCodes.BAD_REQUEST));
+    return;
+  }
+  req.query.side = (req.query.side as string).toUpperCase();
+
   if (!validSwaps.some((pair) => pair === (req.query.pair as string))) {
     next(
       new StatusError(
         "Pair parameter must be one of the following: " + validSwaps.join(", "),
+        StatusCodes.BAD_REQUEST
+      )
+    );
+    return;
+  }
+
+  if(req.query.side !== "BUY" && req.query.side !== "SELL") {
+    next(
+      new StatusError(
+        "Side parameter must be one of the following: BUY, SELL",
         StatusCodes.BAD_REQUEST
       )
     );
