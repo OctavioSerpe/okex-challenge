@@ -2,23 +2,27 @@ import { Request, Response, NextFunction } from "express";
 import { StatusCodes } from "http-status-codes";
 import { listingPairs } from "../db/initialDb";
 import { StatusError } from "../errors/StatusError";
+import { getConfig } from "../services/okex";
 
-export const getSwapMiddleware = (
+export const getSwapMiddleware = async (
   req: Request,
   res: Response,
   next: NextFunction
 ) => {
-  if (!req.query.volume) {
+  if (req.query.volume === undefined) {
     next(new StatusError("Missing volume parameter", StatusCodes.BAD_REQUEST));
+    return;
   }
 
   if (!req.query.pair) {
     next(new StatusError("Missing pair parameter", StatusCodes.BAD_REQUEST));
+    return;
   }
   req.query.pair = (req.query.pair as string).toUpperCase();
 
-  if (!req.query.spread) {
+  if (req.query.spread === undefined) {
     next(new StatusError("Missing spread parameter", StatusCodes.BAD_REQUEST));
+    return;
   }
 
   if (isNaN(parseFloat(req.query.volume as string))) {
@@ -28,6 +32,7 @@ export const getSwapMiddleware = (
         StatusCodes.BAD_REQUEST
       )
     );
+    return;
   }
 
   if (isNaN(parseFloat(req.query.spread as string))) {
@@ -37,6 +42,20 @@ export const getSwapMiddleware = (
         StatusCodes.BAD_REQUEST
       )
     );
+    return;
+  }
+
+  if (
+    req.query.fee !== undefined &&
+    isNaN(parseFloat(req.query.fee as string))
+  ) {
+    next(
+      new StatusError("Fee parameter must be a number", StatusCodes.BAD_REQUEST)
+    );
+    return;
+  } else if (req.query.fee == undefined) {
+    const config = await getConfig();
+    req.query.fee = `${config.fee}`;
   }
 
   if (!listingPairs.some((pair) => pair === (req.query.pair as string))) {
@@ -47,6 +66,7 @@ export const getSwapMiddleware = (
         StatusCodes.BAD_REQUEST
       )
     );
+    return;
   }
 
   next();
@@ -61,17 +81,18 @@ export const executeSwapMiddleware = (
 ) => {
   if (!req.query.pair) {
     next(new StatusError("Missing pair parameter", StatusCodes.BAD_REQUEST));
+    return;
   }
   req.query.pair = (req.query.pair as string).toUpperCase();
 
   if (!validSwaps.some((pair) => pair === (req.query.pair as string))) {
     next(
       new StatusError(
-        "Pair parameter must be one of the following: " +
-        validSwaps.join(", "),
+        "Pair parameter must be one of the following: " + validSwaps.join(", "),
         StatusCodes.BAD_REQUEST
       )
     );
+    return;
   }
 
   next();

@@ -24,7 +24,7 @@ export const loadInitialTables = async () => {
     }
 
     await client.query(
-      "INSERT INTO config (ID, FEE, SPREAD) VALUES (1, 0.01, 0.2) ON CONFLICT DO NOTHING"
+      "INSERT INTO config (ID, FEE, SPREAD) VALUES (1, 0.08, 0.0001) ON CONFLICT DO NOTHING"
     );
 
     await client.end();

@@ -16,6 +16,7 @@ export const getSwap = async (req: Request, res: Response, next: NextFunction) =
   const volume = parseFloat(req.query.volume as string);
   let pair = req.query.pair as string;
   const spread = parseFloat(req.query.spread as string);
+  const fee = parseFloat(req.query.fee as string);
 
   // getOptimalSwapForPair(pair, spread)
   //   .then(response => res.json(response))
@@ -101,14 +102,20 @@ export const getSwap = async (req: Request, res: Response, next: NextFunction) =
         "America/Buenos_Aires"
       ).toISOString();
 
+      const totalBid = optimalSpotPairData.spreadBid * volume;
+      const totalAsk = optimalSpotPairData.spreadAsk * volume;
+
       await query(`UPDATE spot_instruments 
         SET 
           SPREAD = ${optimalSpotPairData.spread},
           LAST_TRADED_PRICE = ${optimalSpotPairData.lastTradedPrice},
           SPREAD_ASK = ${optimalSpotPairData.spreadAsk},
-          TOTAL_SPREAD_ASK = ${optimalSpotPairData.spreadAsk * volume},
+          TOTAL_SPREAD_ASK = ${totalAsk},
           SPREAD_BID = ${optimalSpotPairData.spreadBid},
-          TOTAL_SPREAD_BID = ${optimalSpotPairData.spreadBid * volume},
+          TOTAL_SPREAD_BID = ${totalBid},
+          FEE = ${fee},
+          FEE_BID = ${totalBid * fee},
+          FEE_ASK = ${totalAsk * fee},
           VOLUME = ${volume},
           EXPIRE_DATE = '${expireISODate}'
         WHERE INSTRUMENT_ID = '${pair}'`);
@@ -116,13 +123,16 @@ export const getSwap = async (req: Request, res: Response, next: NextFunction) =
       const jsonResponse = {
         pair,
         lastTradedPrice: optimalSpotPairData.lastTradedPrice,
+        fee,
         buy: {
           unitPrice: optimalSpotPairData.spreadBid,
           totalPrice: optimalSpotPairData.spreadBid * volume, // limit
+          feePrice: totalBid * fee,
         },
         sell: {
           unitPrice: optimalSpotPairData.spreadAsk,
           totalPrice: optimalSpotPairData.spreadAsk * volume, // limit
+          feePrice: totalAsk * fee,
         },
         expireISODate,
       };

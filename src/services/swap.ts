@@ -1,5 +1,5 @@
 import { query } from "../db/initialDb";
-import { executeRequest, getConfig, config } from "./okex";
+import { executeRequest, getConfig } from "./okex";
 
 // export type optimalSideData ={
 //     price: number,
@@ -74,7 +74,7 @@ export const getOptimalSwapForPair = async (
   );
 
   if (parametricSpread === undefined) {
-    const config: config = await getConfig();
+    const config = await getConfig();
     parametricSpread = config.spread;
   }
 
@@ -103,7 +103,9 @@ export type swap = {
 };
 
 export const getSwapData = async (pair: string): Promise<swap> => {
-  const DBswapData = await query(`SELECT * FROM spot_instruments WHERE instrument_id = '${pair}'`);
+  const DBswapData = await query(
+    `SELECT * FROM spot_instruments WHERE instrument_id = '${pair}'`
+  );
 
   const swapData = {
     totalSpreadBid: DBswapData[0].total_spread_bid,
