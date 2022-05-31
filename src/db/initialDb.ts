@@ -1,7 +1,14 @@
 import { Client } from "pg";
 import { schema } from "./schema";
 
-export const listingPairs = ["BTC-USDT", "ETH-USDT", "USDC-USDT", "AAVE-USDT", "AAVE-USDC"];
+export const listingPairs = [
+  "BTC-USDT",
+  "ETH-USDT",
+  "USDC-USDT",
+  "AAVE-USDT",
+  "AAVE-USDC",
+];
+export const initialListingPairs = ["USDC-USDT", "AAVE-USDT"];
 
 export const loadInitialTables = async () => {
   const client = new Client();
@@ -17,10 +24,16 @@ export const loadInitialTables = async () => {
     }
 
     // load the pairs to be listed
-    for (const pair of listingPairs) {
-      await client.query(
-        `INSERT INTO spot_instruments(INSTRUMENT_ID) VALUES ('${pair}') ON CONFLICT DO NOTHING`
+    for (const pair of initialListingPairs) {
+      const retrievedPair = await client.query(
+        `SELECT * FROM spot_instruments WHERE INSTRUMENT_ID = '${pair}'`
       );
+
+      if (retrievedPair.rowCount === 0) {
+        await client.query(
+          `INSERT INTO spot_instruments(INSTRUMENT_ID) VALUES ('${pair}')`
+        );
+      }
     }
 
     await client.query(
@@ -38,7 +51,7 @@ export const query = async (query: string) => {
 
   try {
     await client.connect();
-    
+
     const response = await client.query(query);
 
     await client.end();

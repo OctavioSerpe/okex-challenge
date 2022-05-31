@@ -79,19 +79,45 @@ export const executeSwapMiddleware = (
   res: Response,
   next: NextFunction
 ) => {
-  if (!req.query.pair) {
+  if (!req.params.id) {
+    next(
+      new StatusError("Missing swap id path parameter", StatusCodes.BAD_REQUEST)
+    );
+    return;
+  }
+
+  if (!req.body.pair) {
     next(new StatusError("Missing pair parameter", StatusCodes.BAD_REQUEST));
     return;
   }
-  req.query.pair = (req.query.pair as string).toUpperCase();
+  req.body.pair = (req.body.pair as string).toUpperCase();
 
-  if(!req.query.side) {
+  if (!req.body.side) {
     next(new StatusError("Missing side parameter", StatusCodes.BAD_REQUEST));
     return;
   }
-  req.query.side = (req.query.side as string).toUpperCase();
+  req.body.side = (req.body.side as string).toUpperCase();
 
-  if (!validSwaps.some((pair) => pair === (req.query.pair as string))) {
+  const swapId = parseInt(req.params.id as string);
+  if (isNaN(swapId)) {
+    next(
+      new StatusError(
+        "Swap id path parameter must be a number",
+        StatusCodes.BAD_REQUEST
+      )
+    );
+    return;
+  } else if (swapId < 1) {
+    next(
+      new StatusError(
+        "Swap id path parameter must be greater than 0",
+        StatusCodes.BAD_REQUEST
+      )
+    );
+    return;
+  }
+
+  if (!validSwaps.some((pair) => pair === (req.body.pair as string))) {
     next(
       new StatusError(
         "Pair parameter must be one of the following: " + validSwaps.join(", "),
@@ -101,7 +127,7 @@ export const executeSwapMiddleware = (
     return;
   }
 
-  if(req.query.side !== "BUY" && req.query.side !== "SELL") {
+  if (req.body.side !== "BUY" && req.body.side !== "SELL") {
     next(
       new StatusError(
         "Side parameter must be one of the following: BUY, SELL",

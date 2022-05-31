@@ -89,7 +89,7 @@ export const getSwap = async (
     multiplier
   );
   // log data into db, not really necessary
-  if (pair == "AAVE-USDT") {
+  if (pair === "AAVE-USDT") {
     await query(`UPDATE spot_instruments 
         SET 
           SPREAD = ${optimalSpotPairData.spread},
@@ -115,21 +115,19 @@ export const getSwap = async (
   const totalBid = optimalSpotPairData.spreadBid * volume;
   const totalAsk = optimalSpotPairData.spreadAsk * volume;
 
-  await query(`UPDATE spot_instruments 
-        SET 
-          SPREAD = ${optimalSpotPairData.spread},
-          LAST_TRADED_PRICE = ${optimalSpotPairData.lastTradedPrice},
-          SPREAD_ASK = ${optimalSpotPairData.spreadAsk},
-          TOTAL_SPREAD_ASK = ${totalAsk},
-          SPREAD_BID = ${optimalSpotPairData.spreadBid},
-          TOTAL_SPREAD_BID = ${totalBid},
-          FEE = ${fee},
-          VOLUME = ${volume},
-          FEE_VOLUME = ${volume * fee},
-          EXPIRE_DATE = '${expireISODate}'
-        WHERE INSTRUMENT_ID = '${pair}'`);
+  let id =
+    await query(`INSERT INTO spot_instruments(INSTRUMENT_ID, LAST_TRADED_PRICE, SPREAD, SPREAD_BID, TOTAL_SPREAD_BID, SPREAD_ASK, TOTAL_SPREAD_ASK, FEE, VOLUME, FEE_VOLUME, EXPIRE_DATE)
+         VALUES('${pair}', ${optimalSpotPairData.lastTradedPrice}, ${spread}, ${
+      optimalSpotPairData.spreadBid
+    }, ${totalBid}, ${
+      optimalSpotPairData.spreadAsk
+    }, ${totalAsk}, ${fee}, ${volume}, ${totalBid * fee}, '${expireISODate}')
+  RETURNING ID`);
+
+  id = id[0].id;
 
   const jsonResponse = {
+    id,
     pair,
     lastTradedPrice: optimalSpotPairData.lastTradedPrice,
     fee,
@@ -154,18 +152,23 @@ export const executeSwap = async (
   res: Response,
   next: NextFunction
 ) => {
-  const pair = req.query.pair as string;
-  const side = req.query.side as string;
+  const pair = req.body.pair as string;
+  const side = req.body.side as string;
+  const swapId = parseInt(req.params.id as string);
 
-  const swapData = await getSwapData(pair);
+  let swapData = null;
 
-  if (Object.values(swapData).some((value) => value === null)) {
+  try {
+    swapData = await getSwapData(swapId);
+  } catch (err) {
+    // handles every type of error in the same way
     next(
       new StatusError(
-        "Swap data not loaded, please request a swap first at /swap",
-        StatusCodes.CONFLICT
+        "Swap id not found, please request a swap first at /swap endpoint or check the id",
+        StatusCodes.NOT_FOUND
       )
     );
+    return;
   }
 
   const currentISODate = zonedTimeToUtc(
@@ -178,7 +181,7 @@ export const executeSwap = async (
   if (isAfter(new Date(currentISODate), new Date(expireISODate))) {
     next(
       new StatusError(
-        "Swap expired, please request a new swap at /swap",
+        "Swap expired, please request a new swap at /swap endpoint",
         StatusCodes.CONFLICT
       )
     );
@@ -247,7 +250,5 @@ export const executeSwap = async (
     )`);
 
     res.json({ swapData: swapData, currentISODate, expireISODate, response });
-
   }
-
 };

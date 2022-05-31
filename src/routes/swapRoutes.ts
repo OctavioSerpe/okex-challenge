@@ -4,5 +4,5 @@ import { executeSwapMiddleware, getSwapMiddleware } from "../middlewares/swapMid
 
 export default function(app: Express){
     app.get("/swap", getSwapMiddleware, getSwap);
-    app.post("/swap", executeSwapMiddleware, executeSwap);
+    app.post("/swap/:id", executeSwapMiddleware, executeSwap);
 };

@@ -106,10 +106,14 @@ export type swap = {
   expireDate: string;
 };
 
-export const getSwapData = async (pair: string): Promise<swap> => {
+export const getSwapData = async (swapId: number): Promise<swap> => {
   const DBswapData = await query(
-    `SELECT * FROM spot_instruments WHERE instrument_id = '${pair}'`
+    `SELECT * FROM spot_instruments WHERE id = ${swapId}`
   );
+
+  if (DBswapData.length === 0) {
+    throw new Error("Swap not found");
+  }
 
   const swapData = {
     totalSpreadBid: DBswapData[0].total_spread_bid,
