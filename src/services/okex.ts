@@ -38,19 +38,27 @@ export const executeRequest = async (
 
   const signature = getSignature(timestamp, method, endpoint, body ?? {});
 
+  const headers = {
+    "OK-ACCESS-KEY": apiKey,
+    "OK-ACCESS-PASSPHRASE": passphrase,
+    "OK-ACCESS-TIMESTAMP": `${timestamp}`,
+    "OK-ACCESS-SIGN": signature,
+    accept: "application/json",
+  };
+
+  if (process.env.NODE_ENV === "development") {
+    headers["x-simulated-trading"] = 1;
+  }
+
   const axiosConfig: AxiosRequestConfig = {
     method,
     url: `${process.env.OKEX_BASE_URL}${endpoint}`,
-    headers: {
-      "OK-ACCESS-KEY": apiKey,
-      "OK-ACCESS-PASSPHRASE": passphrase,
-      "OK-ACCESS-TIMESTAMP": `${timestamp}`,
-      "OK-ACCESS-SIGN": signature,
-    },
+    headers,
   };
 
   if (method !== "GET") {
     axiosConfig.data = body;
+    headers["Content-Type"] = "application/json";
   }
 
   const response = await axios(axiosConfig);

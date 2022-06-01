@@ -97,8 +97,9 @@ export const getOptimalSwapForPair = async (
 };
 
 export type swap = {
-  totalSpreadBid: number;
-  totalSpreadAsk: number;
+  spreadBid: number;
+  spreadAsk: number;
+  tradeVolume: number;
   bidFeeVolume: number;
   volume: number;
   fee: number;
@@ -116,8 +117,9 @@ export const getSwapData = async (swapId: number): Promise<swap> => {
   }
 
   const swapData = {
-    totalSpreadBid: DBswapData[0].total_spread_bid,
-    totalSpreadAsk: DBswapData[0].total_spread_ask,
+    spreadBid: DBswapData[0].spread_bid,
+    spreadAsk: DBswapData[0].spread_ask,
+    tradeVolume: DBswapData[0].trade_volume,
     bidFeeVolume: DBswapData[0].fee_volume,
     volume: DBswapData[0].volume,
     fee: DBswapData[0].fee,
@@ -126,4 +128,56 @@ export const getSwapData = async (swapId: number): Promise<swap> => {
   };
 
   return swapData;
+};
+
+export type order = {
+  swapId: number;
+  pair: string;
+  side: string;
+  orderId: string;
+  orderPrice: number;
+  filledPrice: number;
+  volume: number;
+  filledVolume: number;
+  spread: number;
+  fee: number;
+  feeVolume: number;
+  feePrice: number;
+  status: string;
+};
+
+const parseOrderLog = (orderLog: any): order => {
+  return {
+    swapId: orderLog.swap_id,
+    pair: orderLog.pair,
+    side: orderLog.side,
+    orderId: orderLog.order_id,
+    orderPrice: orderLog.order_price,
+    filledPrice: orderLog.filled_price,
+    volume: orderLog.volume,
+    filledVolume: orderLog.filled_volume,
+    spread: orderLog.spread,
+    fee: orderLog.fee,
+    feeVolume: orderLog.fee_volume,
+    feePrice: orderLog.fee_price,
+    status: orderLog.order_status,
+  };
+};
+
+const gerOrderData = async (queryLog: string): Promise<order> => {
+  const log = await query(queryLog);
+
+  if (log.length === 0) {
+    throw new Error("No order log found");
+  }
+
+  return parseOrderLog(log[0]);
+};
+
+export const getOrderDataBySwapId = async (swapId: number): Promise<order> => {
+  return await gerOrderData(`SELECT * FROM logs WHERE swap_id = ${swapId}`)
+};
+
+export const getOrderDataById = async (orderId: string): Promise<order> => {
+  return await gerOrderData(`SELECT * FROM logs WHERE order_id = '${orderId}'`)
 };

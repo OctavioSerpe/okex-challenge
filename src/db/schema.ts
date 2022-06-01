@@ -17,6 +17,7 @@ export const schema: Table[] = [
       "TOTAL_SPREAD_ASK DECIMAL(10, 5)",
       "FEE DECIMAL(10, 5)",
       "VOLUME DECIMAL(10, 5)",
+      "TRADE_VOLUME DECIMAL(10, 5)",
       "FEE_VOLUME DECIMAL(10, 5)",
       "EXPIRE_DATE TIMESTAMPTZ",
     ],

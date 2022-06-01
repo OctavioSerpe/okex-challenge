@@ -139,3 +139,57 @@ export const executeSwapMiddleware = (
 
   next();
 };
+
+export const getSwapByIdMiddleware = (
+  req: Request,
+  res: Response,
+  next: NextFunction
+) => {
+
+
+  if (!req.params.id) {
+    next(
+      new StatusError("Missing swap id path parameter", StatusCodes.BAD_REQUEST)
+    );
+    return;
+  }
+
+  const swapId = parseInt(req.params.id as string);
+  if (isNaN(swapId)) {
+    next(
+      new StatusError(
+        "Swap id path parameter must be a number",
+        StatusCodes.BAD_REQUEST
+      )
+    );
+    return;
+  } else if (swapId < 1) {
+    next(
+      new StatusError(
+        "Swap id path parameter must be greater than 0",
+        StatusCodes.BAD_REQUEST
+      )
+    );
+    return;
+  }
+
+  next();
+};
+
+export const getSwapByOrderIdMiddleware = (
+  req: Request,
+  res: Response,
+  next: NextFunction
+) => {
+  if (!req.params.id || req.params.id.length === 0) {
+    next(
+      new StatusError(
+        "Missing order id path parameter",
+        StatusCodes.BAD_REQUEST
+      )
+    );
+    return;
+  }
+
+  next();
+};

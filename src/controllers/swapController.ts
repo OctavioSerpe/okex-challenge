@@ -6,7 +6,14 @@ import { query } from "../db/initialDb";
 import { StatusError } from "../errors/StatusError";
 import { executeRequest } from "../services/okex";
 
-import { getOptimalSwapForPair, getSwapData, swap } from "../services/swap";
+import {
+  getOptimalSwapForPair,
+  getOrderDataById,
+  getOrderDataBySwapId,
+  getSwapData,
+  order,
+  swap,
+} from "../services/swap";
 
 export type sideResult = {
   price: number;
@@ -116,12 +123,14 @@ export const getSwap = async (
   const totalAsk = optimalSpotPairData.spreadAsk * volume;
 
   let id =
-    await query(`INSERT INTO spot_instruments(INSTRUMENT_ID, LAST_TRADED_PRICE, SPREAD, SPREAD_BID, TOTAL_SPREAD_BID, SPREAD_ASK, TOTAL_SPREAD_ASK, FEE, VOLUME, FEE_VOLUME, EXPIRE_DATE)
+    await query(`INSERT INTO spot_instruments(INSTRUMENT_ID, LAST_TRADED_PRICE, SPREAD, SPREAD_BID, TOTAL_SPREAD_BID, SPREAD_ASK, TOTAL_SPREAD_ASK, FEE, VOLUME, FEE_VOLUME, TRADE_VOLUME, EXPIRE_DATE)
          VALUES('${pair}', ${optimalSpotPairData.lastTradedPrice}, ${spread}, ${
       optimalSpotPairData.spreadBid
     }, ${totalBid}, ${
       optimalSpotPairData.spreadAsk
-    }, ${totalAsk}, ${fee}, ${volume}, ${totalBid * fee}, '${expireISODate}')
+    }, ${totalAsk}, ${fee}, ${volume}, ${volume * fee}, ${
+      volume * (1 - fee)
+    }, '${expireISODate}')
   RETURNING ID`);
 
   id = id[0].id;
@@ -132,19 +141,71 @@ export const getSwap = async (
     lastTradedPrice: optimalSpotPairData.lastTradedPrice,
     fee,
     buy: {
-      unitPrice: optimalSpotPairData.spreadBid,
-      totalPrice: totalBid, // limit
+      maxUnitPrice: optimalSpotPairData.spreadBid,
+      maxTotalPrice: totalBid, // limit
+      tradeVolume: volume * (1 - fee),
       feeVolume: volume * fee,
     },
     sell: {
-      unitPrice: optimalSpotPairData.spreadAsk,
-      totalPrice: totalAsk, // limit
-      feePrice: totalAsk * fee,
+      minUnitPrice: optimalSpotPairData.spreadAsk,
+      minTotalPrice: totalAsk, // limit
+      minFinalPrice: totalAsk * (1 - fee),
+      minFeePrice: totalAsk * fee,
     },
     expireISODate,
   };
 
   res.json(jsonResponse);
+};
+
+type okexOrderDetails = {
+  filledPrice: number;
+  filledVolume: number;
+  status: string;
+};
+
+const getOrderDetails = async (
+  orderId: string,
+  pair: string,
+  next: NextFunction
+): Promise<okexOrderDetails> => {
+  const orderDetails = await executeRequest(
+    `/api/v5/trade/order?ordId=${orderId}&instId=${pair}`,
+    "GET"
+  );
+
+  if (orderDetails.code === "1") {
+    next(
+      new StatusError(
+        `Retrieval of order details failed, please check your account portfolio & order status with ID ${orderId} on OKEX. OKEX message: ${orderDetails.msg}`,
+        StatusCodes.INTERNAL_SERVER_ERROR
+      )
+    );
+    return null;
+  }
+
+  if (orderDetails.code !== "0") {
+    next(
+      new StatusError(
+        `Retrieval of order details failed, please check your account portfolio & order status with ID ${orderId} on OKEX. OKEX message: ${orderDetails.msg}`,
+        StatusCodes.INTERNAL_SERVER_ERROR
+      )
+    );
+    return null;
+  }
+
+  const executedPrice =
+    orderDetails.data[0].fillPx.length === 0
+      ? 0
+      : parseFloat(orderDetails.data[0].fillPx[0] as string);
+  const executedVolume = parseFloat(orderDetails.data[0].fillSz as string);
+  const orderStatus = orderDetails.data[0].state;
+
+  return {
+    filledPrice: executedPrice,
+    filledVolume: executedVolume,
+    status: orderStatus,
+  };
 };
 
 export const executeSwap = async (
@@ -188,21 +249,18 @@ export const executeSwap = async (
     return;
   }
 
-  const orderPrice =
-    side === "BUY" ? swapData.totalSpreadBid : swapData.totalSpreadAsk;
-  const orderVolume = side === "BUY" ? swapData.bidFeeVolume : swapData.volume;
+  const orderPrice = side === "BUY" ? swapData.spreadBid : swapData.spreadAsk;
+  const orderVolume = side === "BUY" ? swapData.tradeVolume : swapData.volume;
 
   // TODO: execute swap on OKEX API & if succeeded truncate entry from DB
   const response = await executeRequest(`/api/v5/trade/order`, "POST", {
     instId: pair,
     tdMode: "cash",
-    side: side,
+    side: side.toLowerCase(),
     ordType: "limit",
     sz: orderVolume,
     px: orderPrice,
   });
-
-  console.log(response);
 
   if (response.code === "1") {
     next(
@@ -215,40 +273,161 @@ export const executeSwap = async (
   }
 
   if (response.code === "0") {
-    const orderID = response.data.ordId;
+    const orderId = response.data[0].ordId;
 
-    const orderDetails = await executeRequest(
-      `/api/v5/trade/order?ordId=${orderID}&instId=${pair}`,
-      "GET"
-    );
+    const orderDetails = await getOrderDetails(orderId, pair, next);
 
-    if (response.code === "1") {
-      next(
-        new StatusError(
-          `Retrieval of order details failed, please check your account portfolio & order status with ID ${orderID} on OKEX. OKEX message: ${response.msg}`,
-          StatusCodes.INTERNAL_SERVER_ERROR
-        )
-      );
+    if (orderDetails === null) {
       return;
     }
 
-    const executedPrice = orderDetails.data.fillPx;
-    const executedVolume = orderDetails.data.fillSz;
-    const orderStatus = orderDetails.data.state;
-
     // do something with the fee
     await query(`INSERT INTO logs 
-    (pair, side, order_id, order_price, filled_price, volume, filled_volume, spread, fee, fee_volume, fee_price, order_status) 
-    VALUES(
-      '${pair}', '${side}', '${
-      response.orderId
-    }', '${orderPrice}', '${executedPrice}', '${orderVolume}', '${executedVolume}','${
-      swapData.spread
-    }', '${swapData.fee}', '${swapData.bidFeeVolume}', '${
-      orderPrice * swapData.fee
-    }', '${orderStatus}'
-    )`);
+  (swap_id, pair, side, order_id, order_price, filled_price, volume, filled_volume, spread, fee, fee_volume, fee_price, order_status) 
+  VALUES(
+    ${swapId},
+    '${pair}', '${side}', '${orderId}', ${orderPrice}, ${
+      orderDetails.filledPrice
+    }, ${orderVolume}, ${orderDetails.filledVolume},${swapData.spread}, ${
+      swapData.fee
+    }, ${side === "BUY" ? swapData.bidFeeVolume : 0}, ${
+      side === "BUY" ? 0 : orderDetails.filledPrice * swapData.fee
+    }, '${orderDetails.status}'
+  )`);
 
-    res.json({ swapData: swapData, currentISODate, expireISODate, response });
+    res.json({ orderId: orderId });
+    return;
   }
+};
+
+type swapDataJSON = {
+  swap_id: number;
+  pair: string;
+  side: string;
+  order_id: string;
+  order_price: number;
+  filled_price: number;
+  volume: number;
+  filled_volume: number;
+  spread: number;
+  fee: number;
+  fee_volume: number;
+  fee_price: number;
+  order_status: string;
+};
+
+const parseSwapDataToJSON = (swapData: order): swapDataJSON => {
+  return {
+    swap_id: swapData.swapId,
+    pair: swapData.pair,
+    side: swapData.side,
+    order_id: swapData.orderId,
+    order_price: swapData.orderPrice,
+    filled_price: swapData.filledPrice,
+    volume: swapData.volume,
+    filled_volume: swapData.filledVolume,
+    spread: swapData.spread,
+    fee: swapData.fee,
+    fee_volume: swapData.feeVolume,
+    fee_price: swapData.feePrice,
+    order_status: swapData.status,
+  };
+};
+
+const updateOrderData = async (orderDetails: okexOrderDetails, swapData: order) => {
+  await query(`UPDATE logs SET
+      filled_price = ${orderDetails.filledPrice},
+      filled_volume = ${orderDetails.filledVolume},
+      order_status = '${orderDetails.status}'
+      WHERE swap_id = ${swapData.swapId}`);
+}
+
+export const getSwapDataById = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+) => {
+  const swapId = parseInt(req.params.id as string);
+  let swapData = null;
+
+  try {
+    swapData = await getOrderDataBySwapId(swapId);
+  } catch (err) {
+    // handles every type of error in the same way
+    next(
+      new StatusError(
+        "Order not found, please check the swap id",
+        StatusCodes.NOT_FOUND
+      )
+    );
+    return;
+  }
+
+  const swapDataResponse = parseSwapDataToJSON(swapData);
+
+  if (swapData.status === "live") {
+    // fetch & update data
+    const orderDetails = await getOrderDetails(
+      swapData.orderId,
+      swapData.pair,
+      next
+    );
+
+    if (orderDetails === null) {
+      return;
+    }
+
+    await updateOrderData(orderDetails, swapData);
+
+    swapDataResponse.filled_price = orderDetails.filledPrice;
+    swapDataResponse.filled_volume = orderDetails.filledVolume;
+    swapDataResponse.order_status = orderDetails.status;
+  }
+
+  res.json(swapDataResponse);
+};
+
+export const getSwapDataByOrderId = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+) => {
+  const orderId = req.params.id;
+  let swapData = null;
+
+  try {
+    swapData = await getOrderDataById(orderId);
+  } catch (err) {
+    // handles every type of error in the same way
+    next(
+      new StatusError(
+        "Order not found, please check the swap id",
+        StatusCodes.NOT_FOUND
+      )
+    );
+    return;
+  }
+
+  const swapDataResponse = parseSwapDataToJSON(swapData);
+
+  if (swapData.status === "live") {
+    // fetch & update data
+    const orderDetails = await getOrderDetails(
+      swapData.orderId,
+      swapData.pair,
+      next
+    );
+
+    if (orderDetails === null) {
+      return;
+    }
+
+    await updateOrderData(orderDetails, swapData);
+
+    swapDataResponse.filled_price = orderDetails.filledPrice;
+    swapDataResponse.filled_volume = orderDetails.filledVolume;
+    swapDataResponse.order_status = orderDetails.status;
+  }
+
+  res.json(parseSwapDataToJSON(swapData));
 };
