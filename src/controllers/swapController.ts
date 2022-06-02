@@ -163,6 +163,7 @@ type okexOrderDetails = {
   filledPrice: number;
   filledVolume: number;
   status: string;
+  multiplier: number;
 };
 
 const getOrderDetails = async (
@@ -201,9 +202,9 @@ const getOrderDetails = async (
     const fromSwap = await query(
       `SELECT * FROM spot_instruments WHERE INSTRUMENT_ID = '${fromPair}'`
     );
-    multiplier = 1 / fromSwap[0].last_traded_price;
+    multiplier = 1 / parseFloat(fromSwap[0].last_traded_price as string);
   }
-
+  console.log(multiplier, fromPair)
   const executedPrice =
     orderDetails.data[0].fillPx.length === 0
       ? 0
@@ -215,6 +216,7 @@ const getOrderDetails = async (
     filledPrice: executedPrice,
     filledVolume: executedVolume,
     status: orderStatus,
+    multiplier
   };
 };
 
@@ -289,7 +291,6 @@ export const executeSwap = async (
     pair = pair === "AAVE-USDC" ? "AAVE-USDT" : "BTC-USDT";
   }
 
-  // TODO: execute swap on OKEX API & if succeeded truncate entry from DB
   const response = await executeRequest(`/api/v5/trade/order`, "POST", {
     instId: pair,
     tdMode: "cash",
@@ -323,7 +324,7 @@ export const executeSwap = async (
   (swap_id, pair, side, order_id, order_price, filled_price, volume, filled_volume, spread, fee, fee_volume, fee_price, order_status) 
   VALUES(
     ${swapId},
-    '${pair}', '${side}', '${orderId}', ${orderPrice}, ${
+    '${swapData.pair}', '${side}', '${orderId}', ${orderPrice * orderDetails.multiplier}, ${
       orderDetails.filledPrice
     }, ${orderVolume}, ${orderDetails.filledVolume},${swapData.spread}, ${
       swapData.fee
