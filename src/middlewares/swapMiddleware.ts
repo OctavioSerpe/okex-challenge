@@ -86,12 +86,6 @@ export const executeSwapMiddleware = (
     return;
   }
 
-  if (!req.body.pair) {
-    next(new StatusError("Missing pair parameter", StatusCodes.BAD_REQUEST));
-    return;
-  }
-  req.body.pair = (req.body.pair as string).toUpperCase();
-
   if (!req.body.side) {
     next(new StatusError("Missing side parameter", StatusCodes.BAD_REQUEST));
     return;
@@ -111,16 +105,6 @@ export const executeSwapMiddleware = (
     next(
       new StatusError(
         "Swap id path parameter must be greater than 0",
-        StatusCodes.BAD_REQUEST
-      )
-    );
-    return;
-  }
-
-  if (!validSwaps.some((pair) => pair === (req.body.pair as string))) {
-    next(
-      new StatusError(
-        "Pair parameter must be one of the following: " + validSwaps.join(", "),
         StatusCodes.BAD_REQUEST
       )
     );

@@ -25,7 +25,7 @@ export const schema: Table[] = [
   {
     table: "logs",
     columns: [
-      "SWAP_ID INTEGER PRIMARY KEY",
+      "SWAP_ID INTEGER NOT NULL",
       "PAIR VARCHAR(255) NOT NULL",
       "SIDE VARCHAR(32) NOT NULL",
       "ORDER_ID VARCHAR(255) NOT NULL",

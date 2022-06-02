@@ -18,6 +18,8 @@ app.use(express.urlencoded({ extended: true }));
 swapRoutes(app);
 errorRoutes(app);
 
+// FIXME: all numeric response fields must be numbers, not strings
+
 app.listen(process.env.PORT, () =>
   console.log(`Server has started and listening on port ${process.env.PORT}!`)
 );

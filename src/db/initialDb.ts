@@ -7,8 +7,9 @@ export const listingPairs = [
   "USDC-USDT",
   "AAVE-USDT",
   "AAVE-USDC",
+  "BTC-USDC",
 ];
-export const initialListingPairs = ["USDC-USDT", "AAVE-USDT"];
+export const initialListingPairs = ["USDC-USDT", "AAVE-USDT", "BTC-USDC"];
 
 export const loadInitialTables = async () => {
   const client = new Client();

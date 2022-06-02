@@ -97,7 +97,10 @@ export const getOptimalSwapForPair = async (
 };
 
 export type swap = {
+  pair: string,
+  lastTradedPrice: number,
   spreadBid: number;
+  totalSpreadBid: number,
   spreadAsk: number;
   tradeVolume: number;
   bidFeeVolume: number;
@@ -117,7 +120,10 @@ export const getSwapData = async (swapId: number): Promise<swap> => {
   }
 
   const swapData = {
+    pair: DBswapData[0].instrument_id,
+    lastTradedPrice: DBswapData[0].last_traded_price,
     spreadBid: DBswapData[0].spread_bid,
+    totalSpreadBid: DBswapData[0].total_spread_bid,
     spreadAsk: DBswapData[0].spread_ask,
     tradeVolume: DBswapData[0].trade_volume,
     bidFeeVolume: DBswapData[0].fee_volume,
@@ -164,7 +170,7 @@ const parseOrderLog = (orderLog: any): order => {
   };
 };
 
-const gerOrderData = async (queryLog: string): Promise<order> => {
+const getOrderData = async (queryLog: string): Promise<order> => {
   const log = await query(queryLog);
 
   if (log.length === 0) {
@@ -175,9 +181,35 @@ const gerOrderData = async (queryLog: string): Promise<order> => {
 };
 
 export const getOrderDataBySwapId = async (swapId: number): Promise<order> => {
-  return await gerOrderData(`SELECT * FROM logs WHERE swap_id = ${swapId}`)
+  return await getOrderData(`SELECT * FROM logs WHERE swap_id = ${swapId}`)
 };
 
 export const getOrderDataById = async (orderId: string): Promise<order> => {
-  return await gerOrderData(`SELECT * FROM logs WHERE order_id = '${orderId}'`)
+  return await getOrderData(`SELECT * FROM logs WHERE order_id = '${orderId}'`)
 };
+
+export const getSwapByPair = async (pair: string): Promise<swap> => {
+  const DBswapData = await query(
+    `SELECT * FROM spot_instruments WHERE instrument_id = '${pair}'`
+  );
+
+  if (DBswapData.length === 0) {
+    throw new Error("Swap not found");
+  }
+
+  const swapData = {
+    pair: DBswapData[DBswapData.length - 1].instrument_id,
+    lastTradedPrice: parseFloat(DBswapData[DBswapData.length - 1].last_traded_price),
+    spreadBid: parseFloat(DBswapData[DBswapData.length - 1].spread_bid),
+    totalSpreadBid: parseFloat(DBswapData[DBswapData.length - 1].total_spread_bid),
+    spreadAsk: parseFloat(DBswapData[DBswapData.length - 1].spread_ask),
+    tradeVolume: parseFloat(DBswapData[DBswapData.length - 1].trade_volume),
+    bidFeeVolume: parseFloat(DBswapData[DBswapData.length - 1].fee_volume),
+    volume: parseFloat(DBswapData[DBswapData.length - 1].volume),
+    fee: parseFloat(DBswapData[DBswapData.length - 1].fee),
+    spread: parseFloat(DBswapData[DBswapData.length - 1].spread),
+    expireDate: DBswapData[DBswapData.length - 1].expire_date,
+  };
+
+  return swapData;
+}
