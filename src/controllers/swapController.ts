@@ -71,13 +71,24 @@ export const getSwap = async (
   let multiplier = 1;
   let applySpreadToAsk = true;
   if (pair === "AAVE-USDC" || pair === "BTC-USDC") {
-    // set spread to 0 as we want the optimal & also we are talking about stable coins
-    const optimalSpotPairData = await getOptimalSwapForPair(
-      "USDC-USDT",
-      0,
-      multiplier,
-      applySpreadToAsk
-    );
+    let optimalSpotPairData;
+    try {
+      // set spread to 0 as we want the optimal & also we are talking about stable coins
+      optimalSpotPairData = await getOptimalSwapForPair(
+        "USDC-USDT",
+        0,
+        multiplier,
+        applySpreadToAsk
+      );
+    } catch (err) {
+      next(
+        new StatusError(
+          `Error getting optimal swap for pair ${pair}. ${err}`,
+          StatusCodes.INTERNAL_SERVER_ERROR
+        )
+      );
+      return;
+    }
 
     // log data into db, not really necessary
     await query(`UPDATE spot_instruments 
@@ -97,12 +108,25 @@ export const getSwap = async (
     pair = pair === "AAVE-USDC" ? "AAVE-USDT" : "BTC-USDT";
     applySpreadToAsk = false;
   }
-  const optimalSpotPairData = await getOptimalSwapForPair(
-    pair,
-    spread,
-    multiplier,
-    applySpreadToAsk
-  );
+
+  let optimalSpotPairData;
+  try {
+    optimalSpotPairData = await getOptimalSwapForPair(
+      pair,
+      spread,
+      multiplier,
+      applySpreadToAsk
+    );
+  } catch (err) {
+    next(
+      new StatusError(
+        `Error getting optimal swap for pair ${pair}. ${err}`,
+        StatusCodes.INTERNAL_SERVER_ERROR
+      )
+    );
+    return;
+  }
+
   // log data into db, not really necessary
   const originalPair = req.query.pair as string;
   if (originalPair === "AAVE-USDC" || originalPair === "BTC-USDC") {
@@ -166,7 +190,6 @@ export const getSwap = async (
 
   res.json(jsonResponse);
 };
-
 
 export const executeSwap = async (
   req: Request,
@@ -258,38 +281,58 @@ export const executeSwap = async (
     const intermediateSz =
       side === "BUY" ? swapData.totalSpreadBid : swapData.volume;
     // execute market order to sell USDC
-    const intermediateOrder = await executeRequest(
-      `/api/v5/trade/order`,
-      "POST",
-      {
+    let intermediateOrder;
+    try {
+      intermediateOrder = await executeRequest(`/api/v5/trade/order`, "POST", {
         instId: intermediateInstId,
         tdMode: "cash",
         side: "sell",
         ordType: "market",
         sz: intermediateSz,
-      }
-    );
-
-    if (intermediateOrder.code !== "0") {
+      });
+    } catch (err) {
       next(
         new StatusError(
-          `Execution of order failed, please check your account portfolio & order status with ID ${intermediateOrder.data[0].ordId} on OKEX. OKEX message: ${intermediateOrder.msg} - ${intermediateOrder.data[0].sMsg}`,
+          "Error executing order, please check your account portfolio. " + err,
           StatusCodes.INTERNAL_SERVER_ERROR
         )
       );
       return;
     }
-    // prepare the order price for the next order (assuming the order status is filled)
-    const intermediateOrderDetails = await getOrderDetails(
-      intermediateOrder.data[0].ordId,
-      intermediateInstId,
-      next,
-      ""
-    );
+
+    let intermediateOrderDetails;
+    try {
+      // prepare the order price for the next order (assuming the order status is filled)
+      intermediateOrderDetails = await getOrderDetails(
+        intermediateOrder.data[0].ordId,
+        intermediateInstId,
+        ""
+      );
+    } catch (err) {
+      next(
+        new StatusError(
+          "Retrieval of order details failed, please check your account portfolio. " +
+            err,
+          StatusCodes.INTERNAL_SERVER_ERROR
+        )
+      );
+      return;
+    }
 
     if (side === "BUY") {
-      const fromUSDT = await getSwapByPair("USDC-USDT");
-      auxOrderPrice *= fromUSDT.lastTradedPrice;
+      try {
+        const fromUSDT = await getSwapByPair("USDC-USDT");
+        auxOrderPrice *= fromUSDT.lastTradedPrice;
+      } catch (err) {
+        next(
+          new StatusError(
+            "Error getting USDC-USDT swap, please check your account portfolio. " +
+              err,
+            StatusCodes.INTERNAL_SERVER_ERROR
+          )
+        );
+        return;
+      }
       pair = `${fromInstrument}-USDT`;
     } else {
       auxFilledPrice = intermediateOrderDetails.filledPrice;
@@ -315,61 +358,67 @@ export const executeSwap = async (
   };
 
   if (orderType === "limit") {
-    body["px"] = orderPrice;
+    body["px"] = auxOrderPrice;
   }
 
-  const response = await executeRequest(`/api/v5/trade/order`, "POST", body);
-
-  if (response.code === "1") {
+  let response;
+  try {
+    response = await executeRequest(`/api/v5/trade/order`, "POST", body);
+  } catch(err) {
     next(
       new StatusError(
-        `Swap failed, please try again & check your account portfolio on OKEX. OKEX message: ${response.msg} - ${response.data[0].sMsg}`,
+        "Swap failed, please check your account portfolio & try again. " + err,
         StatusCodes.INTERNAL_SERVER_ERROR
       )
     );
     return;
   }
 
-  if (response.code === "0") {
-    const orderId = response.data[0].ordId;
+  const orderId = response.data[0].ordId;
 
-    const orderDetails = await getOrderDetails(orderId, pair, next, fromPair);
-    if (orderDetails === null) {
-      return;
-    }
+  let orderDetails;
+  try {
+    orderDetails = await getOrderDetails(orderId, pair, fromPair);
+  } catch(err) {
+    next(
+      new StatusError(
+        "Getting swap order details failed, please check your account portfolio & order history. " + err,
+        StatusCodes.INTERNAL_SERVER_ERROR
+      )
+    );
+    return;
+  }
 
-    if (switchSide) {
-      side = side === "BUY" ? "SELL" : "BUY";
-    }
+  if (switchSide) {
+    side = side === "BUY" ? "SELL" : "BUY";
+  }
 
-    if(!unregisteredPair) {
-      auxFilledPrice = orderDetails.filledPrice;
-      auxFilledVolume = orderDetails.filledVolume;
-    }
+  if (!unregisteredPair) {
+    auxFilledPrice = orderDetails.filledPrice;
+    auxFilledVolume = orderDetails.filledVolume;
+  } 
 
-    // do something with the fee
-    await query(`INSERT INTO logs 
+  // do something with the fee
+  await query(`INSERT INTO logs 
   (swap_id, pair, side, order_id, order_price, filled_price, volume, filled_volume, spread, fee, fee_volume, fee_price, order_status) 
   VALUES(
     ${swapId},
     '${swapData.pair}', '${side}', '${orderId}', ${
-      auxOrderPrice * orderDetails.multiplier
-    }, ${
-      side === "BUY"
-        ? orderDetails.filledPrice
-        : auxFilledPrice * orderDetails.multiplier
-    }, ${orderVolume}, ${
-      side === "BUY" ? orderDetails.filledVolume : auxFilledVolume
-    },${swapData.spread}, ${swapData.fee}, ${
-      side === "BUY" ? swapData.bidFeeVolume : 0
-    }, ${side === "BUY" ? 0 : auxFilledPrice * swapData.fee}, '${
-      orderDetails.status
-    }'
+    auxOrderPrice * orderDetails.multiplier
+  }, ${
+    side === "BUY"
+      ? orderDetails.filledPrice
+      : auxFilledPrice * orderDetails.multiplier
+  }, ${orderVolume}, ${
+    side === "BUY" ? orderDetails.filledVolume : auxFilledVolume
+  },${swapData.spread}, ${swapData.fee}, ${
+    side === "BUY" ? swapData.bidFeeVolume : 0
+  }, ${side === "BUY" ? 0 : auxFilledPrice * swapData.fee}, '${
+    orderDetails.status
+  }'
   )`);
 
-    res.json({ orderId: orderId });
-    return;
-  }
+  res.json({ order_id: orderId });
 };
 
 type swapDataJSON = {
@@ -410,11 +459,10 @@ const updateOrderData = async (
   orderDetails: okexOrderDetails,
   swapData: order
 ) => {
-
   let fee = "";
 
   // do something with the fee
-  if(swapData.side === "SELL") {
+  if (swapData.side === "SELL") {
     fee = `, fee_price = ${orderDetails.filledPrice * swapData.fee}`;
   }
 
@@ -446,31 +494,39 @@ export const getSwapDataById = async (
     return;
   }
 
-  const swapDataResponse = parseSwapDataToJSON(swapData);
+  const swapDataResponse = swapData.map(parseSwapDataToJSON);
 
   let fromPair = "";
+  let registeredPair = swapData.pair;
   if (swapData.pair === "AAVE-USDC" || swapData.pair === "BTC-USDC") {
+    const hyphenPos = swapData.pair.indexOf("-");
+    registeredPair = `${swapData.pair.slice(0, hyphenPos)}-USDT`;
     fromPair = "USDC-USDT";
   }
 
   if (swapData.status === "live") {
-    // fetch & update data
-    const orderDetails = await getOrderDetails(
-      swapData.orderId,
-      swapData.pair,
-      next,
-      fromPair
-    );
-
-    if (orderDetails === null) {
+    try {
+      // fetch & update data
+      const orderDetails = await getOrderDetails(
+        swapData.orderId,
+        registeredPair,
+        fromPair
+      );
+  
+      await updateOrderData(orderDetails, swapData);
+  
+      swapDataResponse.filled_price = orderDetails.filledPrice;
+      swapDataResponse.filled_volume = orderDetails.filledVolume;
+      swapDataResponse.order_status = orderDetails.status;
+    } catch (err) {
+      next(
+        new StatusError(
+          "Getting swap order details failed, please check your order history. " + err,
+          StatusCodes.INTERNAL_SERVER_ERROR
+        )
+      );
       return;
     }
-
-    await updateOrderData(orderDetails, swapData);
-
-    swapDataResponse.filled_price = orderDetails.filledPrice;
-    swapDataResponse.filled_volume = orderDetails.filledVolume;
-    swapDataResponse.order_status = orderDetails.status;
   }
 
   res.json(swapDataResponse);
@@ -500,28 +556,40 @@ export const getSwapDataByOrderId = async (
   const swapDataResponse = parseSwapDataToJSON(swapData);
 
   let fromPair = "";
+  let registeredPair = swapData.pair;
   if (swapData.pair === "AAVE-USDC" || swapData.pair === "BTC-USDC") {
+    const hyphenPos = swapData.pair.indexOf("-");
+    registeredPair = `${swapData.pair.slice(0, hyphenPos)}-USDT`;
     fromPair = "USDC-USDT";
   }
 
   if (swapData.status === "live") {
-    // fetch & update data
-    const orderDetails = await getOrderDetails(
-      swapData.orderId,
-      swapData.pair,
-      next,
-      fromPair
-    );
-
-    if (orderDetails === null) {
+    try {
+      // fetch & update data
+      const orderDetails = await getOrderDetails(
+        swapData.orderId,
+        registeredPair,
+        fromPair
+      );
+  
+      if (orderDetails === null) {
+        return;
+      }
+  
+      await updateOrderData(orderDetails, swapData);
+  
+      swapDataResponse.filled_price = orderDetails.filledPrice;
+      swapDataResponse.filled_volume = orderDetails.filledVolume;
+      swapDataResponse.order_status = orderDetails.status;
+    } catch (err) {
+      next(
+        new StatusError(
+          "Getting swap order details failed, please check your order history. " + err,
+          StatusCodes.INTERNAL_SERVER_ERROR
+        )
+      );
       return;
     }
-
-    await updateOrderData(orderDetails, swapData);
-
-    swapDataResponse.filled_price = orderDetails.filledPrice;
-    swapDataResponse.filled_volume = orderDetails.filledVolume;
-    swapDataResponse.order_status = orderDetails.status;
   }
 
   res.json(swapDataResponse);

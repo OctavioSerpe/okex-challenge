@@ -72,10 +72,15 @@ export const getOptimalSwapForPair = async (
   multiplier?: number,
   applyParametricSpreadToAsk?: boolean
 ): Promise<optimalSpotData> => {
-  const response = await executeRequest(
-    `/api/v5/market/tickers?instType=SPOT`,
-    "GET"
-  );
+  let response;
+  try {
+    response = await executeRequest(
+      `/api/v5/market/tickers?instType=SPOT`,
+      "GET"
+    );
+  } catch (err) {
+    throw new Error(err);
+  }
 
   if (parametricSpread === undefined) {
     const config = await getConfig();
@@ -86,12 +91,18 @@ export const getOptimalSwapForPair = async (
     (spotInstrument) => spotInstrument.instId === pair
   );
 
+  if (spotPairData === undefined) {
+    throw new Error("Pair not found");
+  }
+
   const lastTradedPrice = parseFloat(spotPairData.last) * (multiplier ?? 1);
 
   const optimalSpotPairData: optimalSpotData = {
     lastTradedPrice: lastTradedPrice,
     spreadBid: lastTradedPrice * (1 - parametricSpread),
-    spreadAsk: applyParametricSpreadToAsk ? lastTradedPrice * (1 + parametricSpread) : lastTradedPrice,
+    spreadAsk: applyParametricSpreadToAsk
+      ? lastTradedPrice * (1 + parametricSpread)
+      : lastTradedPrice,
     spread: parametricSpread,
   };
 
@@ -174,22 +185,27 @@ const parseOrderLog = (orderLog: any): order => {
   };
 };
 
-const getOrderData = async (queryLog: string): Promise<order> => {
+const getOrderData = async (queryLog: string): Promise<order[]> => {
   const log = await query(queryLog);
 
   if (log.length === 0) {
     throw new Error("No order log found");
   }
 
-  return parseOrderLog(log[0]);
+  return log.map(parseOrderLog);
 };
 
-export const getOrderDataBySwapId = async (swapId: number): Promise<order> => {
+export const getOrderDataBySwapId = async (
+  swapId: number
+): Promise<order[]> => {
   return await getOrderData(`SELECT * FROM logs WHERE swap_id = ${swapId}`);
 };
 
 export const getOrderDataById = async (orderId: string): Promise<order> => {
-  return await getOrderData(`SELECT * FROM logs WHERE order_id = '${orderId}'`);
+  const logs = await getOrderData(
+    `SELECT * FROM logs WHERE order_id = '${orderId}'`
+  );
+  return logs[0];
 };
 
 export const getSwapByPair = async (pair: string): Promise<swap> => {
@@ -237,7 +253,9 @@ export const checkInstrumentVolume = async (
     throw new Error(error.message);
   }
 
-  const availableBalance = parseFloat(response.data[0].details[0].availBal as string);
+  const availableBalance = parseFloat(
+    response.data[0].details[0].availBal as string
+  );
   return availableBalance >= volume;
 };
 
@@ -253,32 +271,16 @@ export type okexOrderDetails = {
 export const getOrderDetails = async (
   orderId: string,
   pair: string,
-  next: NextFunction,
   fromPair: string
 ): Promise<okexOrderDetails> => {
-  const orderDetails = await executeRequest(
-    `/api/v5/trade/order?ordId=${orderId}&instId=${pair}`,
-    "GET"
-  );
-
-  if (orderDetails.code === "1") {
-    next(
-      new StatusError(
-        `Retrieval of order details failed, please check your account portfolio & order status with ID ${orderId} on OKEX. OKEX message: ${orderDetails.msg}`,
-        StatusCodes.INTERNAL_SERVER_ERROR
-      )
+  let orderDetails;
+  try {
+    orderDetails = await executeRequest(
+      `/api/v5/trade/order?ordId=${orderId}&instId=${pair}`,
+      "GET"
     );
-    return null;
-  }
-
-  if (orderDetails.code !== "0") {
-    next(
-      new StatusError(
-        `Retrieval of order details failed, please check your account portfolio & order status with ID ${orderId} on OKEX. OKEX message: ${orderDetails.msg}`,
-        StatusCodes.INTERNAL_SERVER_ERROR
-      )
-    );
-    return null;
+  } catch (err) {
+    throw new Error(err);
   }
 
   let multiplier = 1;

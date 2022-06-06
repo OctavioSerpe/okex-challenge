@@ -2,6 +2,7 @@ import axios, { AxiosRequestConfig } from "axios";
 import crypto, { Hmac } from "crypto";
 import { zonedTimeToUtc } from "date-fns-tz";
 import { query } from "../db/initialDb";
+import { OkexError } from "../errors/OkexError";
 
 export const getSignature = (
   timestamp: string,
@@ -63,9 +64,17 @@ export const executeRequest = async (
 
   const response = await axios(axiosConfig);
 
-  // TODO: add response codes check
-
-  return response.data;
+  const data = response.data;
+  if (data.code !== "0") {
+    throw new OkexError(
+      data.code,
+      data.msg,
+      data.data[0]?.sMsg,
+      data.data[0]?.sCode,
+      data.data[0]?.ordId
+    );
+  }
+  return data;
 };
 
 export type config = {
@@ -83,7 +92,9 @@ export const getConfig = async (): Promise<config> => {
 
 export const checkResponse = (okexResponse: any): Promise<string> => {
   if (okexResponse.code !== "0") {
-    return Promise.reject(`Message: ${okexResponse.msg}\nCode: ${okexResponse.code}\nSmessage: ${okexResponse.data[0].sMsg}`);
+    return Promise.reject(
+      `Message: ${okexResponse.msg}\nCode: ${okexResponse.code}\nSmessage: ${okexResponse.data[0].sMsg}`
+    );
   }
 
   return Promise.resolve("OK");
