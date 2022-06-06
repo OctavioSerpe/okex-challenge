@@ -67,12 +67,14 @@ export const getSwap = async (
   //   res.json(jsonResponse);
   // })
   let multiplier = 1;
+  let applySpreadToAsk = true;
   if (pair === "AAVE-USDC" || pair === "BTC-USDC") {
     // set spread to 0 as we want the optimal & also we are talking about stable coins
     const optimalSpotPairData = await getOptimalSwapForPair(
       "USDC-USDT",
       0,
-      multiplier
+      multiplier,
+      applySpreadToAsk
     );
 
     // log data into db, not really necessary
@@ -91,11 +93,13 @@ export const getSwap = async (
 
     // set pair recognized by OKX API
     pair = pair === "AAVE-USDC" ? "AAVE-USDT" : "BTC-USDT";
+    applySpreadToAsk = false;
   }
   const optimalSpotPairData = await getOptimalSwapForPair(
     pair,
     spread,
-    multiplier
+    multiplier,
+    applySpreadToAsk
   );
   // log data into db, not really necessary
   if (pair === "AAVE-USDT" || pair === "BTC-USDT") {

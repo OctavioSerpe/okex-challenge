@@ -66,7 +66,8 @@ export type optimalSpotData = {
 export const getOptimalSwapForPair = async (
   pair: string,
   parametricSpread?: number,
-  multiplier?: number
+  multiplier?: number,
+  applyParametricSpreadToAsk?: boolean
 ): Promise<optimalSpotData> => {
   const response = await executeRequest(
     `/api/v5/market/tickers?instType=SPOT`,
@@ -87,7 +88,7 @@ export const getOptimalSwapForPair = async (
   const optimalSpotPairData: optimalSpotData = {
     lastTradedPrice: lastTradedPrice,
     spreadBid: lastTradedPrice * (1 - parametricSpread),
-    spreadAsk: lastTradedPrice * (1 + parametricSpread),
+    spreadAsk: applyParametricSpreadToAsk ? lastTradedPrice * (1 + parametricSpread) : lastTradedPrice,
     spread: parametricSpread,
   };
 
