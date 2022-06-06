@@ -63,6 +63,8 @@ export const executeRequest = async (
 
   const response = await axios(axiosConfig);
 
+  // TODO: add response codes check
+
   return response.data;
 };
 

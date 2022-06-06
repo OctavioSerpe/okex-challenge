@@ -1,4 +1,7 @@
+import { NextFunction } from "express";
+import { StatusCodes } from "http-status-codes";
 import { query } from "../db/initialDb";
+import { StatusError } from "../errors/StatusError";
 import { checkResponse, executeRequest, getConfig } from "./okex";
 
 // export type optimalSideData ={
@@ -236,4 +239,74 @@ export const checkInstrumentVolume = async (
 
   const availableBalance = parseFloat(response.data[0].details[0].availBal as string);
   return availableBalance >= volume;
+};
+
+export type okexOrderDetails = {
+  filledPrice: number;
+  filledVolume: number;
+  status: string;
+  multiplier: number;
+  avgPx: number;
+  accumFillSz: number;
+};
+
+export const getOrderDetails = async (
+  orderId: string,
+  pair: string,
+  next: NextFunction,
+  fromPair: string
+): Promise<okexOrderDetails> => {
+  const orderDetails = await executeRequest(
+    `/api/v5/trade/order?ordId=${orderId}&instId=${pair}`,
+    "GET"
+  );
+
+  if (orderDetails.code === "1") {
+    next(
+      new StatusError(
+        `Retrieval of order details failed, please check your account portfolio & order status with ID ${orderId} on OKEX. OKEX message: ${orderDetails.msg}`,
+        StatusCodes.INTERNAL_SERVER_ERROR
+      )
+    );
+    return null;
+  }
+
+  if (orderDetails.code !== "0") {
+    next(
+      new StatusError(
+        `Retrieval of order details failed, please check your account portfolio & order status with ID ${orderId} on OKEX. OKEX message: ${orderDetails.msg}`,
+        StatusCodes.INTERNAL_SERVER_ERROR
+      )
+    );
+    return null;
+  }
+
+  let multiplier = 1;
+  if (fromPair.length > 0) {
+    const fromSwap = await query(
+      `SELECT * FROM spot_instruments WHERE INSTRUMENT_ID = '${fromPair}'`
+    );
+    multiplier = 1 / parseFloat(fromSwap[0].last_traded_price as string);
+  }
+
+  const executedPrice =
+    orderDetails.data[0].fillPx.length === 0
+      ? 0
+      : parseFloat(orderDetails.data[0].fillPx as string) * multiplier;
+  const executedVolume = parseFloat(orderDetails.data[0].fillSz as string);
+  const orderStatus = orderDetails.data[0].state;
+  const avgPx =
+    orderDetails.data[0].avgPx.length === 0
+      ? 0
+      : parseFloat(orderDetails.data[0].avgPx as string);
+  const accumFillSz = parseFloat(orderDetails.data[0].accFillSz as string);
+
+  return {
+    filledPrice: executedPrice,
+    filledVolume: executedVolume,
+    status: orderStatus,
+    multiplier,
+    avgPx,
+    accumFillSz,
+  };
 };

@@ -11,8 +11,10 @@ import {
   getOptimalSwapForPair,
   getOrderDataById,
   getOrderDataBySwapId,
+  getOrderDetails,
   getSwapByPair,
   getSwapData,
+  okexOrderDetails,
   order,
   swap,
 } from "../services/swap";
@@ -130,9 +132,9 @@ export const getSwap = async (
 
   let id =
     await query(`INSERT INTO spot_instruments(INSTRUMENT_ID, LAST_TRADED_PRICE, SPREAD, SPREAD_BID, TOTAL_SPREAD_BID, SPREAD_ASK, TOTAL_SPREAD_ASK, FEE, VOLUME, FEE_VOLUME, TRADE_VOLUME, EXPIRE_DATE)
-         VALUES('${req.query.pair as string}', ${optimalSpotPairData.lastTradedPrice}, ${spread}, ${
-      optimalSpotPairData.spreadBid
-    }, ${totalBid}, ${
+         VALUES('${req.query.pair as string}', ${
+      optimalSpotPairData.lastTradedPrice
+    }, ${spread}, ${optimalSpotPairData.spreadBid}, ${totalBid}, ${
       optimalSpotPairData.spreadAsk
     }, ${totalAsk}, ${fee}, ${volume}, ${volume * fee}, ${
       volume * (1 - fee)
@@ -164,73 +166,13 @@ export const getSwap = async (
   res.json(jsonResponse);
 };
 
-type okexOrderDetails = {
-  filledPrice: number;
-  filledVolume: number;
-  status: string;
-  multiplier: number;
-};
-
-const getOrderDetails = async (
-  orderId: string,
-  pair: string,
-  next: NextFunction,
-  fromPair: string
-): Promise<okexOrderDetails> => {
-  const orderDetails = await executeRequest(
-    `/api/v5/trade/order?ordId=${orderId}&instId=${pair}`,
-    "GET"
-  );
-
-  if (orderDetails.code === "1") {
-    next(
-      new StatusError(
-        `Retrieval of order details failed, please check your account portfolio & order status with ID ${orderId} on OKEX. OKEX message: ${orderDetails.msg}`,
-        StatusCodes.INTERNAL_SERVER_ERROR
-      )
-    );
-    return null;
-  }
-
-  if (orderDetails.code !== "0") {
-    next(
-      new StatusError(
-        `Retrieval of order details failed, please check your account portfolio & order status with ID ${orderId} on OKEX. OKEX message: ${orderDetails.msg}`,
-        StatusCodes.INTERNAL_SERVER_ERROR
-      )
-    );
-    return null;
-  }
-
-  let multiplier = 1;
-  if (fromPair.length > 0) {
-    const fromSwap = await query(
-      `SELECT * FROM spot_instruments WHERE INSTRUMENT_ID = '${fromPair}'`
-    );
-    multiplier = 1 / parseFloat(fromSwap[0].last_traded_price as string);
-  }
-
-  const executedPrice =
-    orderDetails.data[0].fillPx.length === 0
-      ? 0
-      : parseFloat(orderDetails.data[0].fillPx as string) * multiplier;
-  const executedVolume = parseFloat(orderDetails.data[0].fillSz as string);
-  const orderStatus = orderDetails.data[0].state;
-
-  return {
-    filledPrice: executedPrice,
-    filledVolume: executedVolume,
-    status: orderStatus,
-    multiplier,
-  };
-};
 
 export const executeSwap = async (
   req: Request,
   res: Response,
   next: NextFunction
 ) => {
-  const side = req.body.side as string;
+  let side = req.body.side as string;
   const swapId = parseInt(req.params.id as string);
 
   let swapData: swap = null;
@@ -266,18 +208,23 @@ export const executeSwap = async (
   }
 
   let pair = swapData.pair;
-  let orderPrice = side === "BUY" ? swapData.spreadBid : swapData.spreadAsk;
+  const orderPrice = side === "BUY" ? swapData.spreadBid : swapData.spreadAsk;
   const orderVolume = side === "BUY" ? swapData.tradeVolume : swapData.volume;
+  let auxOrderPrice = orderPrice;
+  let auxOrderVolume = orderVolume;
 
   const hyphenPosition = pair.indexOf("-");
-  const fromInstrument =
-    side === "BUY"
-      ? swapData.pair.slice(hyphenPosition + 1)
-      : swapData.pair.slice(0, hyphenPosition);
+  const fromInstrument = swapData.pair.slice(0, hyphenPosition);
+  // side === "BUY"
+  //   ? swapData.pair.slice(hyphenPosition + 1)
+  //   : swapData.pair.slice(0, hyphenPosition);
 
   let hasVolumeToPerformOperation = false;
   try {
-    hasVolumeToPerformOperation = await checkInstrumentVolume(fromInstrument, swapData.volume);
+    hasVolumeToPerformOperation = await checkInstrumentVolume(
+      fromInstrument,
+      swapData.volume
+    );
   } catch (err) {
     next(
       new StatusError(
@@ -288,7 +235,7 @@ export const executeSwap = async (
     return;
   }
 
-  if(!hasVolumeToPerformOperation) {
+  if (!hasVolumeToPerformOperation) {
     next(
       new StatusError(
         "Not enough volume to perform operation, please check your account portfolio",
@@ -299,41 +246,78 @@ export const executeSwap = async (
   }
 
   let fromPair = "";
-  if (side === "BUY" && (pair === "AAVE-USDC" || pair === "BTC-USDC")) {
-    fromPair = "USDC-USDT";
+  let orderType = "limit";
+  let switchSide = false;
+  let auxFilledVolume, auxFilledPrice;
+  let unregisteredPair = false;
+  if (pair === "AAVE-USDC" || pair === "BTC-USDC") {
+    unregisteredPair = true;
+    const intermediateInstId =
+      side === "BUY" ? "USDC-USDT" : `${fromInstrument}-USDT`;
+    const intermediateSz =
+      side === "BUY" ? swapData.totalSpreadBid : swapData.volume;
     // execute market order to sell USDC
-    const orderBuyUsdt = await executeRequest(`/api/v5/trade/order`, "POST", {
-      instId: "USDC-USDT",
-      tdMode: "cash",
-      side: "sell",
-      ordType: "market",
-      sz: swapData.totalSpreadBid,
-    });
+    const intermediateOrder = await executeRequest(
+      `/api/v5/trade/order`,
+      "POST",
+      {
+        instId: intermediateInstId,
+        tdMode: "cash",
+        side: "sell",
+        ordType: "market",
+        sz: intermediateSz,
+      }
+    );
 
-    if (orderBuyUsdt.code !== "0") {
+    if (intermediateOrder.code !== "0") {
       next(
         new StatusError(
-          `Execution of order failed, please check your account portfolio & order status with ID ${orderBuyUsdt.data.orderId} on OKEX. OKEX message: ${orderBuyUsdt.msg} - ${orderBuyUsdt.data[0].sMsg}`,
+          `Execution of order failed, please check your account portfolio & order status with ID ${intermediateOrder.data[0].ordId} on OKEX. OKEX message: ${intermediateOrder.msg} - ${intermediateOrder.data[0].sMsg}`,
           StatusCodes.INTERNAL_SERVER_ERROR
         )
       );
       return;
     }
-
     // prepare the order price for the next order (assuming the order status is filled)
-    const fromUSDT = await getSwapByPair("USDC-USDT");
-    orderPrice *= fromUSDT.lastTradedPrice;
-    pair = pair === "AAVE-USDC" ? "AAVE-USDT" : "BTC-USDT";
+    const intermediateOrderDetails = await getOrderDetails(
+      intermediateOrder.data[0].ordId,
+      intermediateInstId,
+      next,
+      ""
+    );
+
+    if (side === "BUY") {
+      const fromUSDT = await getSwapByPair("USDC-USDT");
+      auxOrderPrice *= fromUSDT.lastTradedPrice;
+      pair = `${fromInstrument}-USDT`;
+    } else {
+      auxFilledPrice = intermediateOrderDetails.filledPrice;
+      auxFilledVolume = intermediateOrderDetails.filledVolume;
+      auxOrderPrice = intermediateOrderDetails.avgPx;
+      auxOrderVolume =
+        intermediateOrderDetails.accumFillSz * intermediateOrderDetails.avgPx;
+      orderType = "market";
+      pair = "USDC-USDT";
+      side = "BUY";
+      switchSide = true;
+    }
+
+    fromPair = "USDC-USDT";
   }
 
-  const response = await executeRequest(`/api/v5/trade/order`, "POST", {
+  const body = {
     instId: pair,
     tdMode: "cash",
     side: side.toLowerCase(),
-    ordType: "limit",
-    sz: orderVolume,
-    px: orderPrice,
-  });
+    ordType: orderType,
+    sz: auxOrderVolume,
+  };
+
+  if (orderType === "limit") {
+    body["px"] = orderPrice;
+  }
+
+  const response = await executeRequest(`/api/v5/trade/order`, "POST", body);
 
   if (response.code === "1") {
     next(
@@ -349,9 +333,17 @@ export const executeSwap = async (
     const orderId = response.data[0].ordId;
 
     const orderDetails = await getOrderDetails(orderId, pair, next, fromPair);
-
     if (orderDetails === null) {
       return;
+    }
+
+    if (switchSide) {
+      side = side === "BUY" ? "SELL" : "BUY";
+    }
+
+    if(!unregisteredPair) {
+      auxFilledPrice = orderDetails.filledPrice;
+      auxFilledVolume = orderDetails.filledVolume;
     }
 
     // do something with the fee
@@ -360,12 +352,16 @@ export const executeSwap = async (
   VALUES(
     ${swapId},
     '${swapData.pair}', '${side}', '${orderId}', ${
-      orderPrice * orderDetails.multiplier
-    }, ${orderDetails.filledPrice}, ${orderVolume}, ${
-      orderDetails.filledVolume
+      auxOrderPrice * orderDetails.multiplier
+    }, ${
+      side === "BUY"
+        ? orderDetails.filledPrice
+        : auxFilledPrice * orderDetails.multiplier
+    }, ${orderVolume}, ${
+      side === "BUY" ? orderDetails.filledVolume : auxFilledVolume
     },${swapData.spread}, ${swapData.fee}, ${
       side === "BUY" ? swapData.bidFeeVolume : 0
-    }, ${side === "BUY" ? 0 : orderDetails.filledPrice * swapData.fee}, '${
+    }, ${side === "BUY" ? 0 : auxFilledPrice * swapData.fee}, '${
       orderDetails.status
     }'
   )`);
@@ -413,10 +409,18 @@ const updateOrderData = async (
   orderDetails: okexOrderDetails,
   swapData: order
 ) => {
+
+  let fee = "";
+
+  // do something with the fee
+  if(swapData.side === "SELL") {
+    fee = `, fee_price = ${orderDetails.filledPrice * swapData.fee}`;
+  }
+
   await query(`UPDATE logs SET
       filled_price = ${orderDetails.filledPrice},
       filled_volume = ${orderDetails.filledVolume},
-      order_status = '${orderDetails.status}'
+      order_status = '${orderDetails.status}' ${fee}
       WHERE swap_id = ${swapData.swapId}`);
 };
 
