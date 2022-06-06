@@ -7,6 +7,7 @@ import { StatusError } from "../errors/StatusError";
 import { executeRequest } from "../services/okex";
 
 import {
+  checkInstrumentVolume,
   getOptimalSwapForPair,
   getOrderDataById,
   getOrderDataBySwapId,
@@ -125,7 +126,7 @@ export const getSwap = async (
 
   let id =
     await query(`INSERT INTO spot_instruments(INSTRUMENT_ID, LAST_TRADED_PRICE, SPREAD, SPREAD_BID, TOTAL_SPREAD_BID, SPREAD_ASK, TOTAL_SPREAD_ASK, FEE, VOLUME, FEE_VOLUME, TRADE_VOLUME, EXPIRE_DATE)
-         VALUES('${pair}', ${optimalSpotPairData.lastTradedPrice}, ${spread}, ${
+         VALUES('${req.query.pair as string}', ${optimalSpotPairData.lastTradedPrice}, ${spread}, ${
       optimalSpotPairData.spreadBid
     }, ${totalBid}, ${
       optimalSpotPairData.spreadAsk
@@ -204,7 +205,7 @@ const getOrderDetails = async (
     );
     multiplier = 1 / parseFloat(fromSwap[0].last_traded_price as string);
   }
-  console.log(multiplier, fromPair)
+
   const executedPrice =
     orderDetails.data[0].fillPx.length === 0
       ? 0
@@ -216,7 +217,7 @@ const getOrderDetails = async (
     filledPrice: executedPrice,
     filledVolume: executedVolume,
     status: orderStatus,
-    multiplier
+    multiplier,
   };
 };
 
@@ -263,6 +264,36 @@ export const executeSwap = async (
   let pair = swapData.pair;
   let orderPrice = side === "BUY" ? swapData.spreadBid : swapData.spreadAsk;
   const orderVolume = side === "BUY" ? swapData.tradeVolume : swapData.volume;
+
+  const hyphenPosition = pair.indexOf("-");
+  const fromInstrument =
+    side === "BUY"
+      ? swapData.pair.slice(hyphenPosition + 1)
+      : swapData.pair.slice(0, hyphenPosition);
+
+  let hasVolumeToPerformOperation = false;
+  try {
+    hasVolumeToPerformOperation = await checkInstrumentVolume(fromInstrument, swapData.volume);
+  } catch (err) {
+    next(
+      new StatusError(
+        "Error checking instrument volume, please check your account portfolio",
+        StatusCodes.INTERNAL_SERVER_ERROR
+      )
+    );
+    return;
+  }
+
+  if(!hasVolumeToPerformOperation) {
+    next(
+      new StatusError(
+        "Not enough volume to perform operation, please check your account portfolio",
+        StatusCodes.INTERNAL_SERVER_ERROR
+      )
+    );
+    return;
+  }
+
   let fromPair = "";
   if (side === "BUY" && (pair === "AAVE-USDC" || pair === "BTC-USDC")) {
     fromPair = "USDC-USDT";
@@ -324,13 +355,15 @@ export const executeSwap = async (
   (swap_id, pair, side, order_id, order_price, filled_price, volume, filled_volume, spread, fee, fee_volume, fee_price, order_status) 
   VALUES(
     ${swapId},
-    '${swapData.pair}', '${side}', '${orderId}', ${orderPrice * orderDetails.multiplier}, ${
-      orderDetails.filledPrice
-    }, ${orderVolume}, ${orderDetails.filledVolume},${swapData.spread}, ${
-      swapData.fee
-    }, ${side === "BUY" ? swapData.bidFeeVolume : 0}, ${
-      side === "BUY" ? 0 : orderDetails.filledPrice * swapData.fee
-    }, '${orderDetails.status}'
+    '${swapData.pair}', '${side}', '${orderId}', ${
+      orderPrice * orderDetails.multiplier
+    }, ${orderDetails.filledPrice}, ${orderVolume}, ${
+      orderDetails.filledVolume
+    },${swapData.spread}, ${swapData.fee}, ${
+      side === "BUY" ? swapData.bidFeeVolume : 0
+    }, ${side === "BUY" ? 0 : orderDetails.filledPrice * swapData.fee}, '${
+      orderDetails.status
+    }'
   )`);
 
     res.json({ orderId: orderId });
@@ -407,7 +440,7 @@ export const getSwapDataById = async (
   const swapDataResponse = parseSwapDataToJSON(swapData);
 
   let fromPair = "";
-  if(swapData.pair === "AAVE-USDC" || swapData.pair === "BTC-USDC") {
+  if (swapData.pair === "AAVE-USDC" || swapData.pair === "BTC-USDC") {
     fromPair = "USDC-USDT";
   }
 
@@ -448,7 +481,7 @@ export const getSwapDataByOrderId = async (
     // handles every type of error in the same way
     next(
       new StatusError(
-        "Order not found, please check the swap id",
+        "Order not found, please check the order id",
         StatusCodes.NOT_FOUND
       )
     );
@@ -458,7 +491,7 @@ export const getSwapDataByOrderId = async (
   const swapDataResponse = parseSwapDataToJSON(swapData);
 
   let fromPair = "";
-  if(swapData.pair === "AAVE-USDC" || swapData.pair === "BTC-USDC") {
+  if (swapData.pair === "AAVE-USDC" || swapData.pair === "BTC-USDC") {
     fromPair = "USDC-USDT";
   }
 

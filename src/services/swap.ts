@@ -1,5 +1,5 @@
 import { query } from "../db/initialDb";
-import { executeRequest, getConfig } from "./okex";
+import { checkResponse, executeRequest, getConfig } from "./okex";
 
 // export type optimalSideData ={
 //     price: number,
@@ -97,10 +97,10 @@ export const getOptimalSwapForPair = async (
 };
 
 export type swap = {
-  pair: string,
-  lastTradedPrice: number,
+  pair: string;
+  lastTradedPrice: number;
   spreadBid: number;
-  totalSpreadBid: number,
+  totalSpreadBid: number;
   spreadAsk: number;
   tradeVolume: number;
   bidFeeVolume: number;
@@ -181,11 +181,11 @@ const getOrderData = async (queryLog: string): Promise<order> => {
 };
 
 export const getOrderDataBySwapId = async (swapId: number): Promise<order> => {
-  return await getOrderData(`SELECT * FROM logs WHERE swap_id = ${swapId}`)
+  return await getOrderData(`SELECT * FROM logs WHERE swap_id = ${swapId}`);
 };
 
 export const getOrderDataById = async (orderId: string): Promise<order> => {
-  return await getOrderData(`SELECT * FROM logs WHERE order_id = '${orderId}'`)
+  return await getOrderData(`SELECT * FROM logs WHERE order_id = '${orderId}'`);
 };
 
 export const getSwapByPair = async (pair: string): Promise<swap> => {
@@ -199,9 +199,13 @@ export const getSwapByPair = async (pair: string): Promise<swap> => {
 
   const swapData = {
     pair: DBswapData[DBswapData.length - 1].instrument_id,
-    lastTradedPrice: parseFloat(DBswapData[DBswapData.length - 1].last_traded_price),
+    lastTradedPrice: parseFloat(
+      DBswapData[DBswapData.length - 1].last_traded_price
+    ),
     spreadBid: parseFloat(DBswapData[DBswapData.length - 1].spread_bid),
-    totalSpreadBid: parseFloat(DBswapData[DBswapData.length - 1].total_spread_bid),
+    totalSpreadBid: parseFloat(
+      DBswapData[DBswapData.length - 1].total_spread_bid
+    ),
     spreadAsk: parseFloat(DBswapData[DBswapData.length - 1].spread_ask),
     tradeVolume: parseFloat(DBswapData[DBswapData.length - 1].trade_volume),
     bidFeeVolume: parseFloat(DBswapData[DBswapData.length - 1].fee_volume),
@@ -212,4 +216,23 @@ export const getSwapByPair = async (pair: string): Promise<swap> => {
   };
 
   return swapData;
-}
+};
+
+export const checkInstrumentVolume = async (
+  instrument: string,
+  volume: number
+): Promise<boolean> => {
+  const response = await executeRequest(
+    `/api/v5/account/balance?ccy=${instrument}`,
+    "GET"
+  );
+
+  try {
+    checkResponse(response);
+  } catch (error) {
+    throw new Error(error.message);
+  }
+
+  const availableBalance = parseFloat(response.data[0].details[0].availBal as string);
+  return availableBalance >= volume;
+};

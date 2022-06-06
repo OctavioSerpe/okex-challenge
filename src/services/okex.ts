@@ -78,3 +78,11 @@ export const getConfig = async (): Promise<config> => {
 
   return config[0] as config;
 };
+
+export const checkResponse = (okexResponse: any): Promise<string> => {
+  if (okexResponse.code !== "0") {
+    return Promise.reject(`Message: ${okexResponse.msg}\nCode: ${okexResponse.code}\nSmessage: ${okexResponse.data[0].sMsg}`);
+  }
+
+  return Promise.resolve("OK");
+};
