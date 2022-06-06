@@ -104,7 +104,8 @@ export const getSwap = async (
     applySpreadToAsk
   );
   // log data into db, not really necessary
-  if (pair === "AAVE-USDT" || pair === "BTC-USDT") {
+  const originalPair = req.query.pair as string;
+  if (originalPair === "AAVE-USDC" || originalPair === "BTC-USDC") {
     await query(`UPDATE spot_instruments 
         SET 
           SPREAD = ${optimalSpotPairData.spread},
