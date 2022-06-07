@@ -172,6 +172,7 @@ export const getSwap = async (
     id,
     pair,
     last_traded_price: optimalSpotPairData.lastTradedPrice,
+    spread,
     fee,
     buy: {
       max_unit_price: optimalSpotPairData.spreadBid,
@@ -420,7 +421,7 @@ export const executeSwap = async (
   }, '${orderDetails.status}'
   )`);
 
-  res.json({ order_id: orderId });
+  res.status(StatusCodes.CREATED).json({ order_id: orderId });
 };
 
 type swapDataJSON = {

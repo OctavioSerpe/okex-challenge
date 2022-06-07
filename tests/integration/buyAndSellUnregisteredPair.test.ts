@@ -45,7 +45,7 @@ describe("Buy an unregistered pair on Okex with default fee & without spread", (
 
     response = await request.post(`/swap/${id}`).send({ side: "buy" });
 
-    expect(response.status).toBe(200);
+    expect(response.status).toBe(201);
     expect(response.type).toBe("application/json");
 
     const { order_id: orderId } = response.body;
@@ -132,7 +132,7 @@ describe("Buy an unregistered pair on Okex with spread & fee", () => {
 
     response = await request.post(`/swap/${id}`).send({ side: "buy" });
 
-    expect(response.status).toBe(200);
+    expect(response.status).toBe(201);
     expect(response.type).toBe("application/json");
 
     const { order_id: orderId } = response.body;
@@ -218,7 +218,7 @@ describe("Sell an unregistered pair on Okex with default fee & without spread", 
 
     response = await request.post(`/swap/${id}`).send({ side: "sell" });
 
-    expect(response.status).toBe(200);
+    expect(response.status).toBe(201);
     expect(response.type).toBe("application/json");
 
     const { order_id: orderId } = response.body;
@@ -308,7 +308,7 @@ describe("Sell an unregistered pair on Okex with spread & fee", () => {
 
     response = await request.post(`/swap/${id}`).send({ side: "sell" });
 
-    expect(response.status).toBe(200);
+    expect(response.status).toBe(201);
     expect(response.type).toBe("application/json");
 
     const { order_id: orderId } = response.body;

@@ -20,11 +20,6 @@ export const getSwapMiddleware = async (
   }
   req.query.pair = (req.query.pair as string).toUpperCase();
 
-  if (req.query.spread === undefined) {
-    next(new StatusError("Missing spread parameter", StatusCodes.BAD_REQUEST));
-    return;
-  }
-
   if (isNaN(parseFloat(req.query.volume as string))) {
     next(
       new StatusError(
@@ -35,14 +30,17 @@ export const getSwapMiddleware = async (
     return;
   }
 
-  if (isNaN(parseFloat(req.query.spread as string))) {
+  if (
+    req.query.spread !== undefined &&
+    isNaN(parseFloat(req.query.spread as string))
+  ) {
     next(
-      new StatusError(
-        "Spread parameter must be a number",
-        StatusCodes.BAD_REQUEST
-      )
+      new StatusError("Spread parameter must be a number", StatusCodes.BAD_REQUEST)
     );
     return;
+  } else if (req.query.spread === undefined) {
+    const config = await getConfig();
+    req.query.spread = `${config.spread}`;
   }
 
   if (
@@ -53,7 +51,7 @@ export const getSwapMiddleware = async (
       new StatusError("Fee parameter must be a number", StatusCodes.BAD_REQUEST)
     );
     return;
-  } else if (req.query.fee == undefined) {
+  } else if (req.query.fee === undefined) {
     const config = await getConfig();
     req.query.fee = `${config.fee}`;
   }
