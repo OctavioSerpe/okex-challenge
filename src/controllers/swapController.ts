@@ -148,7 +148,7 @@ export const getSwap = async (
 
   // to add more time because of the processing we add 100ms more
   const expireISODate = zonedTimeToUtc(
-    new Date().getTime() + 60 * 5100,
+    new Date().getTime() + 60 * 1100,
     "America/Buenos_Aires"
   ).toISOString();
 
