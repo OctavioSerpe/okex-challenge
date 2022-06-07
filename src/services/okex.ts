@@ -47,7 +47,7 @@ export const executeRequest = async (
     accept: "application/json",
   };
 
-  if (process.env.NODE_ENV === "development") {
+  if (process.env.NODE_ENV !== "production") {
     headers["x-simulated-trading"] = 1;
   }
 

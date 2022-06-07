@@ -171,21 +171,21 @@ export const getSwap = async (
   const jsonResponse = {
     id,
     pair,
-    lastTradedPrice: optimalSpotPairData.lastTradedPrice,
+    last_traded_price: optimalSpotPairData.lastTradedPrice,
     fee,
     buy: {
-      maxUnitPrice: optimalSpotPairData.spreadBid,
-      maxTotalPrice: totalBid, // limit
-      feeVolume: volume * fee,
-      tradeVolume: volume * (1 - fee),
+      max_unit_price: optimalSpotPairData.spreadBid,
+      max_total_price: totalBid, // limit
+      fee_volume: volume * fee,
+      trade_volume: volume * (1 - fee),
     },
     sell: {
-      minUnitPrice: optimalSpotPairData.spreadAsk,
-      minTotalPrice: totalAsk, // limit
-      minFeePrice: totalAsk * fee,
-      minFinalPrice: totalAsk * (1 - fee),
+      min_unit_price: optimalSpotPairData.spreadAsk,
+      min_total_price: totalAsk, // limit
+      min_fee_price: totalAsk * fee,
+      min_final_price: totalAsk * (1 - fee),
     },
-    expireISODate,
+    expire_ISO_date: expireISODate,
   };
 
   res.json(jsonResponse);
@@ -252,7 +252,8 @@ export const executeSwap = async (
   } catch (err) {
     next(
       new StatusError(
-        "Error checking instrument volume, please check your account portfolio",
+        "Error checking instrument volume, please check your account portfolio. " +
+          err,
         StatusCodes.INTERNAL_SERVER_ERROR
       )
     );
@@ -364,7 +365,7 @@ export const executeSwap = async (
   let response;
   try {
     response = await executeRequest(`/api/v5/trade/order`, "POST", body);
-  } catch(err) {
+  } catch (err) {
     next(
       new StatusError(
         "Swap failed, please check your account portfolio & try again. " + err,
@@ -379,10 +380,11 @@ export const executeSwap = async (
   let orderDetails;
   try {
     orderDetails = await getOrderDetails(orderId, pair, fromPair);
-  } catch(err) {
+  } catch (err) {
     next(
       new StatusError(
-        "Getting swap order details failed, please check your account portfolio & order history. " + err,
+        "Getting swap order details failed, please check your account portfolio & order history. " +
+          err,
         StatusCodes.INTERNAL_SERVER_ERROR
       )
     );
@@ -396,7 +398,7 @@ export const executeSwap = async (
   if (!unregisteredPair) {
     auxFilledPrice = orderDetails.filledPrice;
     auxFilledVolume = orderDetails.filledVolume;
-  } 
+  }
 
   // do something with the fee
   await query(`INSERT INTO logs 
@@ -413,9 +415,9 @@ export const executeSwap = async (
     side === "BUY" ? orderDetails.filledVolume : auxFilledVolume
   },${swapData.spread}, ${swapData.fee}, ${
     side === "BUY" ? swapData.bidFeeVolume : 0
-  }, ${side === "BUY" ? 0 : auxFilledPrice * swapData.fee}, '${
-    orderDetails.status
-  }'
+  }, ${
+    side === "BUY" ? 0 : auxFilledPrice * orderDetails.multiplier * swapData.fee
+  }, '${orderDetails.status}'
   )`);
 
   res.json({ order_id: orderId });
@@ -479,7 +481,7 @@ export const getSwapDataById = async (
   next: NextFunction
 ) => {
   const swapId = parseInt(req.params.id as string);
-  let swapData = null;
+  let swapData: order[] = null;
 
   try {
     swapData = await getOrderDataBySwapId(swapId);
@@ -497,35 +499,42 @@ export const getSwapDataById = async (
   const swapDataResponse = swapData.map(parseSwapDataToJSON);
 
   let fromPair = "";
-  let registeredPair = swapData.pair;
-  if (swapData.pair === "AAVE-USDC" || swapData.pair === "BTC-USDC") {
-    const hyphenPos = swapData.pair.indexOf("-");
-    registeredPair = `${swapData.pair.slice(0, hyphenPos)}-USDT`;
+  let registeredPair = swapData[0].pair;
+  if (swapData[0].pair === "AAVE-USDC" || swapData[0].pair === "BTC-USDC") {
+    const hyphenPos = swapData[0].pair.indexOf("-");
+    registeredPair = `${swapData[0].pair.slice(0, hyphenPos)}-USDT`;
     fromPair = "USDC-USDT";
   }
 
-  if (swapData.status === "live") {
-    try {
-      // fetch & update data
-      const orderDetails = await getOrderDetails(
-        swapData.orderId,
-        registeredPair,
-        fromPair
-      );
+  // FIXME: has to be a for to update every order
+  let index = 0;
+  for(const swapLogData of swapData) {
+    if (swapLogData.status === "live") {
+      try {
+        // fetch & update data
+        const orderDetails = await getOrderDetails(
+          swapLogData.orderId,
+          registeredPair,
+          fromPair
+        );
   
-      await updateOrderData(orderDetails, swapData);
+        await updateOrderData(orderDetails, swapLogData);
   
-      swapDataResponse.filled_price = orderDetails.filledPrice;
-      swapDataResponse.filled_volume = orderDetails.filledVolume;
-      swapDataResponse.order_status = orderDetails.status;
-    } catch (err) {
-      next(
-        new StatusError(
-          "Getting swap order details failed, please check your order history. " + err,
-          StatusCodes.INTERNAL_SERVER_ERROR
-        )
-      );
-      return;
+        swapDataResponse[index].filled_price = orderDetails.filledPrice;
+        swapDataResponse[index].filled_volume = orderDetails.filledVolume;
+        swapDataResponse[index].order_status = orderDetails.status;
+
+        index++;
+      } catch (err) {
+        next(
+          new StatusError(
+            "Getting swap order details failed, please check your order history. " +
+              err,
+            StatusCodes.INTERNAL_SERVER_ERROR
+          )
+        );
+        return;
+      }
     }
   }
 
@@ -571,20 +580,17 @@ export const getSwapDataByOrderId = async (
         registeredPair,
         fromPair
       );
-  
-      if (orderDetails === null) {
-        return;
-      }
-  
+
       await updateOrderData(orderDetails, swapData);
-  
+
       swapDataResponse.filled_price = orderDetails.filledPrice;
       swapDataResponse.filled_volume = orderDetails.filledVolume;
       swapDataResponse.order_status = orderDetails.status;
     } catch (err) {
       next(
         new StatusError(
-          "Getting swap order details failed, please check your order history. " + err,
+          "Getting swap order details failed, please check your order history. " +
+            err,
           StatusCodes.INTERNAL_SERVER_ERROR
         )
       );

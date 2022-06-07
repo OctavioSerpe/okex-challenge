@@ -42,6 +42,7 @@ export const loadInitialTables = async () => {
     );
 
     await client.end();
+
   } catch (error) {
     console.log("ERROR: ", error);
   }

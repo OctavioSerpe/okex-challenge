@@ -7,8 +7,9 @@ import errorRoutes from "./routes/errorRoutes";
 import { loadInitialTables } from "./db/initialDb";
 
 // TODO: check if keys are loaded on .env file
-
-loadInitialTables();
+if (process.env.NODE_ENV !== "test") {
+  loadInitialTables();
+}
 
 const app = express();
 app.use(express.json());
@@ -18,6 +19,8 @@ app.use(express.urlencoded({ extended: true }));
 swapRoutes(app);
 errorRoutes(app);
 
-app.listen(process.env.PORT, () =>
+export const server = app.listen(process.env.PORT, () =>
   console.log(`Server has started and listening on port ${process.env.PORT}!`)
 );
+
+export default app;

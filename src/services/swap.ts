@@ -242,15 +242,14 @@ export const checkInstrumentVolume = async (
   instrument: string,
   volume: number
 ): Promise<boolean> => {
-  const response = await executeRequest(
-    `/api/v5/account/balance?ccy=${instrument}`,
-    "GET"
-  );
-
+  let response;
   try {
-    checkResponse(response);
+    response = await executeRequest(
+      `/api/v5/account/balance?ccy=${instrument}`,
+      "GET"
+    );
   } catch (error) {
-    throw new Error(error.message);
+    throw new Error(error);
   }
 
   const availableBalance = parseFloat(
