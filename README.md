@@ -182,6 +182,10 @@ NODE_ENV=<test|development|production>
 ```
 > **Note**: The `NODE_ENV` variable is used to determine which environment to be used. I strongly recommend to change databases depending on the environment.
 
+Before running any command install the libraries with the following command:
+```bash
+$ npm i
+```
 
 Then run the service in `development mode` with the following command:
 ```bash
