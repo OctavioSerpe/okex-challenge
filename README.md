@@ -13,8 +13,6 @@ Build a service based on Okx order books that:
 
 ### Service
 
----
-
 The service consists of a REST API built with
 
 - Nodejs (v14.17.3) with TypeScript.
