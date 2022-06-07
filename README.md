@@ -20,7 +20,7 @@ The service consists of a REST API built with
 
 that exposes 4 endpoints:
 
-1. `GET /swap?volume=<volume>&pair=<pair>&spread=<spread>&fee=<fee>`
+- `GET /swap?volume=<volume>&pair=<pair>&spread=<spread>&fee=<fee>`
   
   Where:
 
