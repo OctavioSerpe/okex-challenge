@@ -34,40 +34,6 @@ export const getSwap = async (
   const spread = parseFloat(req.query.spread as string);
   const fee = parseFloat(req.query.fee as string);
 
-  // getOptimalSwapForPair(pair, spread)
-  //   .then(response => res.json(response))
-  // .then(async (optimalSwap) => {
-
-  //   // to add more time because of the processing we add 100ms more
-  //   const expireISODate = zonedTimeToUtc(
-  //     new Date().getTime() + 60 * 1100,
-  //     "America/Buenos_Aires"
-  //   ).toISOString();
-
-  //   await query(`UPDATE spot_instruments
-  //     SET
-  //       SPREAD = ${optimalSwap.spread},
-  //       BID = ${optimalSwap.buy.price},
-  //       OPEN_BID_ORDERS = ${optimalSwap.buy.openOrders},
-  //       ASK = ${optimalSwap.sell.price},
-  //       OPEN_ASK_ORDERS = ${optimalSwap.sell.openOrders},
-  //       EXPIRE_DATE = '${expireISODate}'
-  //     WHERE INSTRUMENT_ID = '${pair}'`);
-
-  //   let jsonResponse: { [key: string]: any } = {
-  //     expire_in_milliseconds: 60 * 1000,
-  //     expire_utc_date: expireISODate,
-  //   };
-
-  //   let price;
-
-  //   jsonResponse = {
-  //     ...jsonResponse,
-  //     price,
-  //   };
-
-  //   res.json(jsonResponse);
-  // })
   let multiplier = 1;
   let applySpreadToAsk = true;
   if (pair === "AAVE-USDC" || pair === "BTC-USDC") {
