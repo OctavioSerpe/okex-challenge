@@ -11,7 +11,7 @@ Build a service based on Okx order books that:
 - Exposes an endpoint to execute a swap at the estimated price
 - Allows parametric spread & fee.
 
-### Service
+## Service
 
 The service consists of a REST API built with
 
