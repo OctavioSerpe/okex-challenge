@@ -35,7 +35,7 @@ that exposes 4 endpoints:
     > **Note**: AAVE is not available on the test mode on OKX. If you want to test the service with an unregistered pair, use the BTC-USDC pair.
 
 
-    > **Note**: If the requested pair is unregistered on OKX, the spread is not applied (as it executes two consecutive market orders). If you have any doubts check the integration test for unregistered pair.
+    > **Note**: If the requested pair is unregistered on OKX, the spread is not applied to the sell side (as it executes two consecutive market orders). If you have any doubts check the integration test for unregistered pair.
 
   - `spread` is the percentage of the price to be added to the estimated price, expressed as a probability (between 0 & 1). **Optional**, it uses the default value stored in the database.
   - `fee` is the percentage of the price to be added to the estimated price, expressed as a probability (between 0 & 1). **Optional**, it uses the default value stored in the database.
@@ -182,6 +182,10 @@ NODE_ENV=<test|development|production>
 ```
 > **Note**: The `NODE_ENV` variable is used to determine which environment to be used. I strongly recommend to change databases depending on the environment.
 
+Before running any command install the libraries with the following command:
+```bash
+$ npm i
+```
 
 Then run the service in `development mode` with the following command:
 ```bash
