@@ -199,3 +199,8 @@ Lastly, to run the `integration tests` run the following command:
 ```txt
 $ npm run test
 ```
+
+## Next steps - Improvements
+1. Handle decimal operations with [decimal.js](https://github.com/MikeMcl/decimal.js)
+2. Sanitize database operations & use a query builder or custom ORM
+3. Apply spread to operations not related to the customer ones but to handle market volatility
